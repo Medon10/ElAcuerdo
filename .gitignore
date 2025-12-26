@@ -1,0 +1,26 @@
+# Root ignore for monorepo
+
+# env
+.env
+**/.env
+
+# dependencies
+**/node_modules/
+
+# build outputs
+**/dist/
+**/build/
+
+# logs
+**/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+.history/
+
+# misc
+*.tsbuildinfo
