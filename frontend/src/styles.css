@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Paleta de marca (ajustable). Basada en rojo/azul corporativo + neutros. */
+  --brand-red: 220 38 38;     /* rojo */
+  --brand-blue: 29 78 216;    /* azul */
+  --brand-ink: 15 23 42;      /* texto */
+  --brand-surface: 248 250 252; /* fondo */
+  --brand-muted: 100 116 139; /* texto secundario */
+  --brand-border: 226 232 240; /* bordes */
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: rgb(var(--brand-surface));
+  color: rgb(var(--brand-ink));
+}

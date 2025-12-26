@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: vacationmatch-backend
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_URL
+        sync: false
+      - key: TOKEN_SECRET
+        sync: false
+      - key: PORT
+        value: 3000

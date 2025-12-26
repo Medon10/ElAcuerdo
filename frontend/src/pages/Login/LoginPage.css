@@ -1,0 +1,131 @@
+.LoginPage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(var(--brand-surface));
+}
+
+.LoginPage__card {
+  width: 100%;
+  max-width: 28rem;
+  background: #fff;
+  border: 1px solid rgb(var(--brand-border));
+  border-radius: 16px;
+  padding: 32px;
+}
+
+.LoginPage__header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.LoginPage__logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--brand-red));
+}
+
+.LoginPage__logoIcon {
+  width: 32px;
+  height: 32px;
+  color: #fff;
+}
+
+.LoginPage__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: rgb(var(--brand-ink));
+}
+
+.LoginPage__subtitle {
+  margin: 4px 0 0;
+  color: rgb(var(--brand-muted));
+}
+
+.LoginPage__form {
+  display: grid;
+  gap: 16px;
+}
+
+.LoginPage__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgb(var(--brand-ink));
+}
+
+.LoginPage__input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgb(var(--brand-border));
+  outline: none;
+  font-size: 14px;
+}
+
+.LoginPage__input:focus {
+  border-color: rgb(var(--brand-blue));
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.18);
+}
+
+.LoginPage__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.LoginPage__errorIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.LoginPage__submit {
+  margin-top: 8px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 0;
+  background: rgb(var(--brand-blue));
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.LoginPage__submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.LoginPage__submitIcon {
+  width: 20px;
+  height: 20px;
+}
+
+.LoginPage__hint {
+  margin: 0;
+  font-size: 12px;
+  text-align: center;
+  color: rgb(var(--brand-muted));
+}
+
+.LoginPage__mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}

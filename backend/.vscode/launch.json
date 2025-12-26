@@ -1,0 +1,24 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "builder",
+            "request": "launch",
+            "runtimeArgs": ["run", "builder"],
+            "runtimeExecutable": "npm",
+            "skipFiles": ["<node_internals>/**"],
+            "type": "node"
+        },
+        {
+            "name": "start:dev",
+            "request": "launch",
+            "runtimeArgs": ["run", "start:dev"],
+            "runtimeExecutable": "npm",
+            "skipFiles": ["<node_internals>/**"],
+            "type": "node"
+        }
+    ]
+}
+
+
+
