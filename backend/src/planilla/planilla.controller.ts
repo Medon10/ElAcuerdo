@@ -4,6 +4,8 @@ import { Planilla } from './planilla.entity.js';
 import { Recorrido } from '../recorrido/recorrido.entity.js';
 import { PlanillaEfectivo } from '../planilla-efectivo/planilla-efectivo.entity.js';
 import { PlanillaStatus } from './planilla.entity.js';
+import { Usuario } from '../usuario/usuario.entity.js';
+import { sendPlanillaSubmittedEmail } from '../notifications/planillaEmail.js';
 
 function parseLocalDayRange(fechaISO: string): { start: Date; end: Date } | null {
   // Espera 'YYYY-MM-DD'
@@ -162,6 +164,37 @@ async function submitByChofer(req: Request, res: Response) {
 
       await tem.flush();
       return planilla as any;
+    });
+
+    // Enviar email al jefe (si está configurado). No bloquea la respuesta.
+    setImmediate(() => {
+      void (async () => {
+        try {
+          const chofer = await em.findOne(
+            Usuario as any,
+            { id: user.id } as any,
+            { fields: ['id', 'usuario', 'nombre', 'apellido'] as any } as any
+          );
+
+          await sendPlanillaSubmittedEmail({
+            planillaId: Number((created as any).id),
+            fechaISO,
+            numeroCoche: numero_coche,
+            chofer: {
+              id: user.id,
+              usuario: (chofer as any)?.usuario,
+              nombre: (chofer as any)?.nombre,
+              apellido: (chofer as any)?.apellido,
+            },
+            totalRecorrido: total_recorrido,
+            totalEfectivo: total_efectivo,
+            diferencia,
+            comentarios: typeof body.comentarios === 'string' ? body.comentarios.trim() : null,
+          });
+        } catch (err: any) {
+          console.error('[mail] Error preparando email de planilla:', err?.message || err);
+        }
+      })();
     });
 
     return res.status(201).json({
