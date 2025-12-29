@@ -23,11 +23,21 @@ function buildClientUrlFromEnv() {
     return `mysql://${authPart}@${host}:${port}/${database}`;
 }
 
+const dbSslEnabled = String(process.env.DB_SSL || '').toLowerCase() === 'true';
+const dbSslRejectUnauthorized = String(process.env.DB_SSL_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false';
+
 export const orm = await MikroORM.init({
     entities: [Usuario, Planilla, Recorrido, PlanillaEfectivo],
     entitiesTs: [Usuario, Planilla, Recorrido, PlanillaEfectivo],
     driver: MySqlDriver,
     clientUrl: buildClientUrlFromEnv(),
+        driverOptions: dbSslEnabled
+            ? ({
+                    connection: {
+                        ssl: { rejectUnauthorized: dbSslRejectUnauthorized },
+                    },
+                } as any)
+            : undefined,
     debug: false,
     schemaGenerator: { //nunca en producción, solo desarrollo
         disableForeignKeys: true,
