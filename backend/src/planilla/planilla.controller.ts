@@ -119,20 +119,12 @@ async function submitByChofer(req: Request, res: Response) {
 
     const em = orm.em.fork();
 
-    const existing = await em.findOne(
-      Planilla as any,
-      {
-        chofer: user.id,
-        fecha_hora_planilla: { $gte: range.start, $lt: range.end },
-      } as any
-    );
-
-    if (existing) {
-      return res.status(409).json({ message: 'Ya existe una planilla para ese chofer y esa fecha' });
-    }
-
     const created = await em.transactional(async (tem) => {
-      const fecha_hora_planilla = new Date(`${fechaISO}T12:00:00`);
+      // Permitir múltiples planillas por día.
+      // Para "hoy", guardamos el timestamp real (así se pueden ordenar por hora).
+      // Para fechas manuales, usamos un horario fijo para evitar problemas de zona horaria.
+      const todayISO = formatLocalDateISO(new Date());
+      const fecha_hora_planilla = fechaISO === todayISO ? new Date() : new Date(`${fechaISO}T12:00:00`);
       const planilla = tem.create(Planilla as any, {
         chofer: user.id,
         numero_coche,
