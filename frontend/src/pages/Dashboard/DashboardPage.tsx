@@ -390,7 +390,8 @@ function SupervisorDashboard() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalDiaError, setTotalDiaError] = useState<string | null>(null);
-  const [planilla, setPlanilla] = useState<PlanillaDTO | null>(null);
+  const [planillas, setPlanillas] = useState<PlanillaDTO[]>([]);
+  const [selectedPlanillaId, setSelectedPlanillaId] = useState<string>('');
   const [totalDiaValue, setTotalDiaValue] = useState<number>(0);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
@@ -417,20 +418,23 @@ function SupervisorDashboard() {
   useEffect(() => {
     let mounted = true;
     setError(null);
-    setPlanilla(null);
+    setPlanillas([]);
+    setSelectedPlanillaId('');
     setConfirmDeleteOpen(false);
 
     if (!choferId || !fecha) return;
 
     setLoading(true);
     api
-      .get<{ data: PlanillaDTO | null }>(
+      .get<{ data: PlanillaDTO[] }>(
         `/planillas/por-chofer-fecha?choferId=${encodeURIComponent(choferId)}&fecha=${encodeURIComponent(fecha)}`
       )
       .then((res) => {
         if (!mounted) return;
         setError(null);
-        setPlanilla(res.data || null);
+        const items = Array.isArray(res?.data) ? res.data : [];
+        setPlanillas(items);
+        setSelectedPlanillaId(items[0]?.id ? String(items[0].id) : '');
       })
       .catch((e: any) => {
         if (!mounted) return;
@@ -445,6 +449,12 @@ function SupervisorDashboard() {
       mounted = false;
     };
   }, [choferId, fecha]);
+
+  const planilla = useMemo(() => {
+    if (!selectedPlanillaId) return planillas[0] || null;
+    const found = planillas.find((p) => String(p?.id) === String(selectedPlanillaId));
+    return found || planillas[0] || null;
+  }, [planillas, selectedPlanillaId]);
 
   useEffect(() => {
     let mounted = true;
@@ -524,7 +534,11 @@ function SupervisorDashboard() {
     setError(null);
     try {
       await api.del(`/planillas/${planilla.id}`);
-      setPlanilla(null);
+      setPlanillas((prev) => {
+        const next = prev.filter((p) => String(p?.id) !== String(planilla.id));
+        setSelectedPlanillaId(next[0]?.id ? String(next[0].id) : '');
+        return next;
+      });
       setConfirmDeleteOpen(false);
     } catch (e: any) {
       setError(e?.message || 'Error al eliminar planilla');
@@ -593,8 +607,35 @@ function SupervisorDashboard() {
 
           {loading && <div className="DashboardPage__muted" style={{ marginTop: 12 }}>Buscando...</div>}
 
-          {!loading && choferId && fecha && !planilla && !error && (
+          {!loading && choferId && fecha && planillas.length === 0 && !error && (
             <div className="DashboardPage__muted" style={{ marginTop: 12 }}>No hay planilla para esa fecha.</div>
+          )}
+
+          {!loading && choferId && fecha && planillas.length > 1 && (
+            <div style={{ marginTop: 12 }}>
+              <label className="DashboardPage__fieldLabel">Planillas encontradas</label>
+              <select
+                className="DashboardPage__input"
+                value={selectedPlanillaId}
+                onChange={(e) => {
+                  setSelectedPlanillaId(e.target.value);
+                  setConfirmDeleteOpen(false);
+                }}
+              >
+                {planillas.map((p) => {
+                  const when = p?.fecha_hora_planilla ? new Date(p.fecha_hora_planilla).toLocaleTimeString('es-AR') : '';
+                  const label = `#${p.id}${when ? ` • ${when}` : ''} • ${formatMoneyARS(toNumber(p.total_recorrido))}`;
+                  return (
+                    <option key={p.id} value={String(p.id)}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+              <div className="DashboardPage__muted" style={{ marginTop: 6 }}>
+                Se muestran todas las planillas del chofer en esa fecha.
+              </div>
+            </div>
           )}
 
           {planilla && (

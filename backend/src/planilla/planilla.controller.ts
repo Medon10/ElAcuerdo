@@ -218,7 +218,7 @@ async function findByChoferFecha(req: Request, res: Response) {
       return res.status(400).json({ message: 'Formato de fecha inválido. Use YYYY-MM-DD' });
     }
 
-    const item = await em.findOne(
+    const items = await em.find(
       Planilla as any,
       {
         chofer: choferId,
@@ -227,7 +227,7 @@ async function findByChoferFecha(req: Request, res: Response) {
       { populate: ['chofer', 'recorridos', 'efectivos'] as any, orderBy: { fecha_hora_planilla: 'DESC' } as any } as any
     );
 
-    return res.json({ data: item || null });
+    return res.json({ data: items || [] });
   } catch (error) {
     return res.status(500).json({ message: 'Error al buscar planilla', error: (error as any)?.message || String(error) });
   }
