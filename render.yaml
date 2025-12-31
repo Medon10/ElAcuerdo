@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: elacuerdo-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # JWT
+      - key: TOKEN_SECRET
+        sync: false
+      # optional
+      - key: JWT_EXPIRES_IN
+        value: 12h
+
+      # CORS: set to your Vercel URL(s), comma-separated
+      - key: FRONTEND_ORIGINS
+        sync: false
+
+      # TiDB Cloud (MySQL)
+      - key: DB_URL
+        sync: false
+      - key: DB_SSL
+        value: "true"
+      - key: DB_SSL_REJECT_UNAUTHORIZED
+        value: "true"
+
+      # Email notifications (optional)
+      - key: MAIL_ENABLED
+        value: "true"
+      - key: MAIL_TO
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_SECURE
+        value: "true"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
