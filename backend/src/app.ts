@@ -30,6 +30,23 @@ const allowedOrigins = (process.env.FRONTEND_ORIGINS || defaultOrigins.join(',')
   .map((o) => o.trim())
   .filter(Boolean);
 
+function escapeRegex(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isAllowedConfiguredOrigin(origin: string) {
+  if (allowedOrigins.includes(origin)) return true;
+
+  // Support simple wildcards, e.g. https://*.vercel.app
+  for (const pattern of allowedOrigins) {
+    if (!pattern.includes('*')) continue;
+    const re = new RegExp(`^${escapeRegex(pattern).replace(/\\\*/g, '.*')}$`);
+    if (re.test(origin)) return true;
+  }
+
+  return false;
+}
+
 function isLocalDevOrigin(origin: string) {
   try {
     const url = new URL(origin);
@@ -50,7 +67,7 @@ app.use(cors({
     // Dev convenience: allow any localhost origin
     if (isLocalDevOrigin(origin)) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (isAllowedConfiguredOrigin(origin)) return callback(null, true);
     return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
