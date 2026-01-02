@@ -130,6 +130,23 @@ function DriverDashboard() {
 
 function DailyReportForm() {
   const api = useApi();
+  const { payload } = useAuth();
+
+  const draftKey = useMemo(() => {
+    const userId = payload?.id;
+    if (!userId) return null;
+    const todayISO = toLocalISODateString(new Date());
+    return `elAcuerdo.planillaDraft.v1.${userId}.${todayISO}`;
+  }, [payload?.id]);
+
+  type DraftV1 = {
+    v: 1;
+    updatedAt: string;
+    coche: string;
+    routes: Array<{ id: number; time: string; routeId: string; amount: string }>;
+    cashCounts: Record<number, number>;
+  };
+
   const [coche, setCoche] = useState('');
   const [routes, setRoutes] = useState([{ id: 1, time: '', routeId: '', amount: '' }]);
   const [cashCounts, setCashCounts] = useState(() =>
@@ -138,6 +155,63 @@ function DailyReportForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Restore draft (if any) when opening the page.
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return;
+      const data = JSON.parse(raw) as DraftV1;
+      if (!data || data.v !== 1) return;
+
+      if (typeof data.coche === 'string') setCoche(data.coche);
+
+      if (Array.isArray(data.routes) && data.routes.length > 0) {
+        setRoutes(
+          data.routes.map((r, idx) => ({
+            id: Number.isFinite(Number(r?.id)) ? Number(r.id) : Date.now() + idx,
+            time: typeof r?.time === 'string' ? r.time : '',
+            routeId: typeof r?.routeId === 'string' ? r.routeId : '',
+            amount: typeof r?.amount === 'string' ? r.amount : '',
+          }))
+        );
+      }
+
+      if (data.cashCounts && typeof data.cashCounts === 'object') {
+        setCashCounts((prev) => {
+          const next = { ...prev };
+          for (const b of BILLETES) {
+            const v = (data.cashCounts as any)[b.valor];
+            next[b.valor] = Math.max(0, Math.trunc(toNumber(v)));
+          }
+          return next;
+        });
+      }
+    } catch {
+      // ignore draft parse errors
+    }
+  }, [draftKey]);
+
+  // Auto-save draft so it survives reload/closing the page.
+  useEffect(() => {
+    if (!draftKey) return;
+    const t = setTimeout(() => {
+      try {
+        const payloadToSave: DraftV1 = {
+          v: 1,
+          updatedAt: new Date().toISOString(),
+          coche,
+          routes,
+          cashCounts,
+        };
+        localStorage.setItem(draftKey, JSON.stringify(payloadToSave));
+      } catch {
+        // ignore quota / serialization errors
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [draftKey, coche, routes, cashCounts]);
 
   const totalRoutes = useMemo(() => routes.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0), [routes]);
   const totalCash = useMemo(
@@ -221,6 +295,14 @@ function DailyReportForm() {
       setCoche('');
       setRoutes([{ id: 1, time: '', routeId: '', amount: '' }]);
       setCashCounts(BILLETES.reduce((acc, b) => ({ ...acc, [b.valor]: 0 }), {} as Record<number, number>));
+
+      if (draftKey) {
+        try {
+          localStorage.removeItem(draftKey);
+        } catch {
+          // ignore
+        }
+      }
     } catch (e: any) {
       setError(e?.message || 'Error al guardar. Intente nuevamente.');
     } finally {
