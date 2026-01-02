@@ -85,11 +85,11 @@
   right: 8px;
   top: 50%;
   transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 100%;
   border-radius: 10px;
-  border: 1px solid rgb(var(--brand-border));
-  background: #fff;
+  border: 0;
+  background: transparent;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -98,7 +98,7 @@
 }
 
 .LoginPage__passwordToggle:hover {
-  border-color: rgb(var(--brand-blue));
+  background: rgba(29, 78, 216, 0.06);
 }
 
 .LoginPage__passwordToggle:focus {
@@ -106,7 +106,6 @@
 }
 
 .LoginPage__passwordToggle:focus-visible {
-  border-color: rgb(var(--brand-blue));
   box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.18);
 }
 
@@ -114,6 +113,10 @@
   width: 18px;
   height: 18px;
   color: rgb(var(--brand-muted));
+}
+
+.LoginPage__passwordToggle:hover .LoginPage__passwordToggleIcon {
+  color: rgb(var(--brand-blue));
 }
 
 .LoginPage__input:focus {
