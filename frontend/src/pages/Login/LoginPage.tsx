@@ -20,11 +20,26 @@ export default function LoginPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
+    const form = e.currentTarget as HTMLFormElement;
+    const data = new FormData(form);
+    const usuarioForm = String(data.get('usuario') ?? '').trim();
+    const contraseñaForm = String(data.get('contraseña') ?? '');
+
+    if (!usuarioForm || !contraseñaForm) {
+      setError('Completá usuario y contraseña');
+      return;
+    }
+
+    // Sincroniza el state por si el navegador autocompletó sin disparar onChange
+    if (usuarioForm !== usuario) setUsuario(usuarioForm);
+    if (contraseñaForm !== contraseña) setContraseña(contraseñaForm);
+
     setLoading(true);
     try {
       const res = await apiFetch<LoginResponse>('/auth/login', {
         method: 'POST',
-        body: { usuario, contraseña },
+        body: { usuario: usuarioForm, contraseña: contraseñaForm },
       });
       setToken(res.token);
       nav('/', { replace: true });
@@ -51,6 +66,7 @@ export default function LoginPage() {
             <label className="LoginPage__label">Usuario</label>
             <input
               type="text"
+              name="usuario"
               value={usuario}
               onChange={(e) => setUsuario(e.target.value)}
               className="LoginPage__input"
@@ -64,6 +80,7 @@ export default function LoginPage() {
             <div className="LoginPage__passwordWrap">
               <input
                 type={showPassword ? 'text' : 'password'}
+                name="contraseña"
                 value={contraseña}
                 onChange={(e) => setContraseña(e.target.value)}
                 className="LoginPage__input LoginPage__input--withButton"
@@ -94,7 +111,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={!usuario || !contraseña || loading}
+            disabled={loading}
             className="LoginPage__submit"
           >
             <LogIn className="LoginPage__submitIcon" />
