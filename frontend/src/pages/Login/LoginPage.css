@@ -72,6 +72,50 @@
   font-size: 14px;
 }
 
+.LoginPage__passwordWrap {
+  position: relative;
+}
+
+.LoginPage__input--withButton {
+  padding-right: 48px;
+}
+
+.LoginPage__passwordToggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgb(var(--brand-border));
+  background: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.LoginPage__passwordToggle:hover {
+  border-color: rgb(var(--brand-blue));
+}
+
+.LoginPage__passwordToggle:focus {
+  outline: none;
+}
+
+.LoginPage__passwordToggle:focus-visible {
+  border-color: rgb(var(--brand-blue));
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.18);
+}
+
+.LoginPage__passwordToggleIcon {
+  width: 18px;
+  height: 18px;
+  color: rgb(var(--brand-muted));
+}
+
 .LoginPage__input:focus {
   border-color: rgb(var(--brand-blue));
   box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.18);
