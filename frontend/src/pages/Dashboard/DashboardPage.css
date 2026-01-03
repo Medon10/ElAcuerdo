@@ -301,6 +301,10 @@
   padding: 10px;
 }
 
+.DashboardPage__routeCol {
+  min-width: 0;
+}
+
 .DashboardPage__routeCol--time {
   width: 72px;
 }
@@ -311,6 +315,21 @@
 
 .DashboardPage__routeCol--amount {
   flex: 1;
+}
+
+@media (max-width: 420px) {
+  .DashboardPage__routeRow {
+    display: grid;
+    grid-template-columns: 0.9fr 1fr 1.3fr auto;
+    align-items: end;
+    gap: 8px;
+  }
+
+  .DashboardPage__routeCol--time,
+  .DashboardPage__routeCol--route,
+  .DashboardPage__routeCol--amount {
+    width: auto;
+  }
 }
 
 /* Fix visual overlap of focus ring between adjacent inputs */
