@@ -1,5 +1,4 @@
 import nodemailer from 'nodemailer';
-import { Resend } from 'resend';
 import sgMail from '@sendgrid/mail';
 
 export type PlanillaEmailPayload = {
@@ -19,16 +18,7 @@ export type PlanillaEmailPayload = {
 };
 
 let cachedTransport: nodemailer.Transporter | null = null;
-let cachedResend: Resend | null = null;
 let sendgridConfigured = false;
-
-function getResendClient() {
-  if (cachedResend) return cachedResend;
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error('RESEND_API_KEY no configurado');
-  cachedResend = new Resend(apiKey);
-  return cachedResend;
-}
 
 function getTransporter() {
   if (cachedTransport) return cachedTransport;
@@ -133,26 +123,14 @@ export async function sendPlanillaSubmittedEmail(payload: PlanillaEmailPayload) 
       return;
     }
 
-    // Prefer Resend API (HTTP) over SMTP if RESEND_API_KEY is set
-    if (process.env.RESEND_API_KEY) {
-      const resend = getResendClient();
-      await resend.emails.send({
-        from,
-        to: [to],
-        subject,
-        text,
-      });
-      console.log('[mail] Email enviado via Resend a', to, 'planillaId=', payload.planillaId);
-    } else {
-      const transporter = getTransporter();
-      await transporter.sendMail({
-        from,
-        to,
-        subject,
-        text,
-      });
-      console.log('[mail] Email enviado via SMTP a', to, 'planillaId=', payload.planillaId);
-    }
+    const transporter = getTransporter();
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      text,
+    });
+    console.log('[mail] Email enviado via SMTP a', to, 'planillaId=', payload.planillaId);
   } catch (err: any) {
     console.error('[mail] Error enviando email:', err?.message || err);
   }
