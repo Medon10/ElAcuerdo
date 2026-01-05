@@ -290,7 +290,7 @@ function DailyReportForm() {
       const arqueo = abs === 0 ? 'Cuadra' : toNumber(diff) > 0 ? `Faltan ${formatMoneyARS(abs)}` : `Sobra ${formatMoneyARS(abs)}`;
 
       const baseMsg = res?.message || 'Planilla enviada';
-      setSuccess(`${baseMsg}${id ? ` (ID ${id})` : ''} • Total: ${formatMoneyARS(totalR)} • Efectivo: ${formatMoneyARS(totalE)} • ${arqueo}`);
+      setSuccess(`${baseMsg} • Total: ${formatMoneyARS(totalR)} • Efectivo: ${formatMoneyARS(totalE)} • ${arqueo}`);
 
       setCoche('');
       setRoutes([{ id: 1, time: '', routeId: '', amount: '' }]);
@@ -706,7 +706,7 @@ function SupervisorDashboard() {
               >
                 {planillas.map((p) => {
                   const when = p?.fecha_hora_planilla ? new Date(p.fecha_hora_planilla).toLocaleTimeString('es-AR') : '';
-                  const label = `#${p.id}${when ? ` • ${when}` : ''} • ${formatMoneyARS(toNumber(p.total_recorrido))}`;
+                  const label = `${when ? ` • ${when}` : ''} • ${formatMoneyARS(toNumber(p.total_recorrido))}`;
                   return (
                     <option key={p.id} value={String(p.id)}>
                       {label}
