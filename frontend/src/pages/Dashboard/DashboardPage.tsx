@@ -260,7 +260,7 @@ function DailyReportForm() {
       return !(time && routeId && amount);
     });
     if (hasIncompleteRoutes) {
-      return setError('Tenés viajes incompletos. Completá Hora, Recorrido e Importe o eliminá la fila.');
+      return setError('Tenés viajes incompletos. Completá datos o eliminá el viaje.');
     }
     // Si el arqueo no cuadra, se muestra aviso y se envía igual.
 
