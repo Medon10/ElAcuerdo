@@ -250,7 +250,18 @@ function DailyReportForm() {
 
   const handleSubmit = async () => {
     if (!coche) return setError('Falta el número de coche');
-    if (routes.some((r) => !r.amount)) return setError('Faltan importes en la planilla');
+
+    const hasIncompleteRoutes = routes.some((r) => {
+      const time = (r.time || '').trim();
+      const routeId = (r.routeId || '').trim();
+      const amount = (r.amount || '').trim();
+      const anyFilled = Boolean(time || routeId || amount);
+      if (!anyFilled) return true; // fila vacía: pedir completar o eliminar
+      return !(time && routeId && amount);
+    });
+    if (hasIncompleteRoutes) {
+      return setError('Tenés viajes incompletos. Completá Hora, Recorrido e Importe o eliminá la fila.');
+    }
     // Si el arqueo no cuadra, se muestra aviso y se envía igual.
 
     setIsSubmitting(true);
