@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 const STORAGE_KEY = 'elAcuerdo.token';
 
@@ -45,6 +45,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => setToken(null);
+
+  // Auto-logout when the JWT expires.
+  useEffect(() => {
+    if (!token || !payload?.exp) return;
+    const msUntilExpiry = payload.exp * 1000 - Date.now();
+    if (msUntilExpiry <= 0) {
+      logout();
+      return;
+    }
+    const t = window.setTimeout(() => logout(), msUntilExpiry);
+    return () => window.clearTimeout(t);
+  }, [token, payload?.exp]);
 
   const value = useMemo(() => ({ token, payload, setToken, logout }), [token, payload]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -20,6 +20,7 @@ async function parseJsonSafe(res: Response): Promise<any> {
 
 export async function apiFetch<T>(path: string, opts?: { method?: string; body?: any; token?: string | null }) {
   const url = path.startsWith('http') ? path : `${API_URL}${path}`;
+  const hadToken = Boolean(opts?.token);
   const res = await fetch(url, {
     method: opts?.method || 'GET',
     headers: {
@@ -30,6 +31,25 @@ export async function apiFetch<T>(path: string, opts?: { method?: string; body?:
   });
 
   const data = await parseJsonSafe(res);
+
+  // If the token is expired/invalid, kick the user back to login.
+  // Only do this when we actually sent a token (avoid redirecting on bad credentials at /auth/login).
+  if (res.status === 401 && hadToken) {
+    try {
+      localStorage.removeItem('elAcuerdo.token');
+    } catch {
+      // ignore
+    }
+    if (window.location.pathname !== '/login') {
+      window.location.assign('/login');
+    }
+    const err: ApiError = {
+      status: 401,
+      message: 'Sesión expirada',
+      details: data,
+    };
+    throw err;
+  }
 
   if (!res.ok) {
     const err: ApiError = {
