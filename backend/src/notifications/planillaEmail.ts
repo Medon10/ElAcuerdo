@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
+import sgMail from '@sendgrid/mail';
 
 export type PlanillaEmailPayload = {
   planillaId: number;
@@ -19,6 +20,7 @@ export type PlanillaEmailPayload = {
 
 let cachedTransport: nodemailer.Transporter | null = null;
 let cachedResend: Resend | null = null;
+let sendgridConfigured = false;
 
 function getResendClient() {
   if (cachedResend) return cachedResend;
@@ -54,6 +56,14 @@ function getTransporter() {
   });
 
   return cachedTransport;
+}
+
+function ensureSendgrid() {
+  if (sendgridConfigured) return;
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (!apiKey) throw new Error('SENDGRID_API_KEY no configurado');
+  sgMail.setApiKey(apiKey);
+  sendgridConfigured = true;
 }
 
 function getDiferenciaEstado(diferencia: number) {
@@ -110,6 +120,19 @@ export async function sendPlanillaSubmittedEmail(payload: PlanillaEmailPayload) 
     .join('\n');
 
   try {
+    // Prefer SendGrid API (HTTP) over everything else if configured
+    if (process.env.SENDGRID_API_KEY) {
+      ensureSendgrid();
+      await sgMail.send({
+        from,
+        to,
+        subject,
+        text,
+      });
+      console.log('[mail] Email enviado via SendGrid a', to, 'planillaId=', payload.planillaId);
+      return;
+    }
+
     // Prefer Resend API (HTTP) over SMTP if RESEND_API_KEY is set
     if (process.env.RESEND_API_KEY) {
       const resend = getResendClient();
