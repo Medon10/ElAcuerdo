@@ -99,10 +99,10 @@ async function submitByChofer(req: Request, res: Response) {
         numero_recorrido: typeof r?.numero_recorrido === 'string' ? r.numero_recorrido.trim() : undefined,
         importe: toNumber(r?.importe),
       }))
-      .filter((r: RecorridoInput) => r.importe > 0);
+      .filter((r: RecorridoInput) => r.importe > 0 && Boolean(r.horario) && Boolean(r.numero_recorrido));
 
     if (recorridos.length === 0) {
-      return res.status(400).json({ message: 'La planilla debe tener al menos un recorrido con importe' });
+      return res.status(400).json({ message: 'La planilla debe tener al menos un recorrido completo (horario, recorrido e importe)' });
     }
 
     const efectivosRaw = Array.isArray(body.efectivos) ? body.efectivos : [];

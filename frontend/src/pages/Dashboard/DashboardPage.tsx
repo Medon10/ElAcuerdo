@@ -154,6 +154,7 @@ function DailyReportForm() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   // Restore draft (if any) when opening the page.
@@ -213,7 +214,39 @@ function DailyReportForm() {
     return () => clearTimeout(t);
   }, [draftKey, coche, routes, cashCounts]);
 
-  const totalRoutes = useMemo(() => routes.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0), [routes]);
+  const routeMeta = useMemo(() => {
+    let total = 0;
+    let partialCount = 0;
+    let emptyCount = 0;
+
+    const valid = [] as Array<{ horario: string; numero_recorrido: string; importe: number }>;
+
+    for (const r of routes) {
+      const time = (r.time || '').trim();
+      const routeId = (r.routeId || '').trim();
+      const amountStr = (r.amount || '').trim();
+      const amount = toNumber(amountStr);
+
+      const anyFilled = Boolean(time || routeId || amountStr);
+      if (!anyFilled) {
+        emptyCount++;
+        continue;
+      }
+
+      const isComplete = Boolean(time && routeId && amount > 0);
+      if (!isComplete) {
+        partialCount++;
+        continue;
+      }
+
+      total += amount;
+      valid.push({ horario: time, numero_recorrido: routeId, importe: amount });
+    }
+
+    return { total, partialCount, emptyCount, valid };
+  }, [routes]);
+
+  const totalRoutes = routeMeta.total;
   const totalCash = useMemo(
     () => Object.entries(cashCounts).reduce((sum, [valor, cantidad]) => sum + Number(valor) * (Number(cantidad) || 0), 0),
     [cashCounts]
@@ -230,53 +263,47 @@ function DailyReportForm() {
 
   const handleRouteChange = (id: number, field: 'time' | 'routeId' | 'amount', value: string) => {
     setSuccess(null);
+    setWarning(null);
     setRoutes((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
   };
 
   const addRouteRow = () => {
     setSuccess(null);
+    setWarning(null);
     setRoutes((prev) => [...prev, { id: Date.now(), time: '', routeId: '', amount: '' }]);
   };
 
   const removeRouteRow = (id: number) => {
     setSuccess(null);
+    setWarning(null);
     if (routes.length > 1) setRoutes((prev) => prev.filter((r) => r.id !== id));
   };
 
   const handleCashChange = (valor: number, cantidad: string) => {
     setSuccess(null);
+    setWarning(null);
     setCashCounts((prev) => ({ ...prev, [valor]: parseInt(cantidad) || 0 }));
   };
 
   const handleSubmit = async () => {
     if (!coche) return setError('Falta el número de coche');
 
-    const hasIncompleteRoutes = routes.some((r) => {
-      const time = (r.time || '').trim();
-      const routeId = (r.routeId || '').trim();
-      const amount = (r.amount || '').trim();
-      const anyFilled = Boolean(time || routeId || amount);
-      if (!anyFilled) return true; // fila vacía: pedir completar o eliminar
-      return !(time && routeId && amount);
-    });
-    if (hasIncompleteRoutes) {
-      return setError('Tenés viajes incompletos. Completá datos o eliminá el viaje.');
+    const recorridos = routeMeta.valid;
+    if (recorridos.length === 0) {
+      return setError('Cargá al menos un viaje completo (Hora, Recorrido e Importe).');
     }
-    // Si el arqueo no cuadra, se muestra aviso y se envía igual.
+
+    if (routeMeta.partialCount > 0) {
+      setWarning(`Aviso: se ignorarán ${routeMeta.partialCount} viaje(s) incompleto(s) al enviar.`);
+    } else {
+      setWarning(null);
+    }
 
     setIsSubmitting(true);
     setError(null);
     setSuccess(null);
 
     try {
-      const recorridos = routes
-        .map((r) => ({
-          horario: r.time?.trim() || null,
-          numero_recorrido: r.routeId?.trim() || null,
-          importe: Number(r.amount) || 0,
-        }))
-        .filter((r) => r.importe > 0);
-
       const efectivos = BILLETES
         .map((b) => ({
           denominacion: b.valor,
@@ -301,7 +328,8 @@ function DailyReportForm() {
       const arqueo = abs === 0 ? 'Cuadra' : toNumber(diff) > 0 ? `Faltan ${formatMoneyARS(abs)}` : `Sobra ${formatMoneyARS(abs)}`;
 
       const baseMsg = res?.message || 'Planilla enviada';
-      setSuccess(`${baseMsg} • Total: ${formatMoneyARS(totalR)} • Efectivo: ${formatMoneyARS(totalE)} • ${arqueo}`);
+      const ignoredMsg = routeMeta.partialCount > 0 ? ` • Ignoradas: ${routeMeta.partialCount} incompleta(s)` : '';
+      setSuccess(`${baseMsg} • Total: ${formatMoneyARS(totalR)} • Efectivo: ${formatMoneyARS(totalE)} • ${arqueo}${ignoredMsg}`);
 
       setCoche('');
       setRoutes([{ id: 1, time: '', routeId: '', amount: '' }]);
@@ -335,6 +363,7 @@ function DailyReportForm() {
             value={coche}
             onChange={(e) => {
               setSuccess(null);
+              setWarning(null);
               setCoche(e.target.value);
             }}
             className="DashboardPage__input DashboardPage__input--mono DashboardPage__input--lg"
@@ -438,6 +467,13 @@ function DailyReportForm() {
             <div className="DashboardPage__inlineError" role="note">
               <AlertTriangle className="DashboardPage__inlineErrorIcon" />
               <span>Se enviará igual aunque no coincida.</span>
+            </div>
+          )}
+
+          {warning && (
+            <div className="DashboardPage__inlineError" role="note">
+              <AlertTriangle className="DashboardPage__inlineErrorIcon" />
+              <span>{warning}</span>
             </div>
           )}
 
