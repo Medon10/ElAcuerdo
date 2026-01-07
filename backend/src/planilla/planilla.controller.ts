@@ -95,9 +95,21 @@ async function totalDia(req: Request, res: Response) {
     }
 
     const hasChofer = Number.isFinite(choferId as number);
+    // Total recaudado = suma de importes de TODOS los recorridos.
     const sql = hasChofer
-      ? 'select coalesce(sum(total_recorrido), 0) as total from planilla where fecha_hora_planilla >= ? and fecha_hora_planilla < ? and chofer_id = ?'
-      : 'select coalesce(sum(total_recorrido), 0) as total from planilla where fecha_hora_planilla >= ? and fecha_hora_planilla < ?';
+      ? `
+        select coalesce(sum(r.importe), 0) as total
+        from planilla p
+        join recorridos r on r.planilla_id = p.id
+        where p.fecha_hora_planilla >= ? and p.fecha_hora_planilla < ?
+          and p.chofer_id = ?
+      `
+      : `
+        select coalesce(sum(r.importe), 0) as total
+        from planilla p
+        join recorridos r on r.planilla_id = p.id
+        where p.fecha_hora_planilla >= ? and p.fecha_hora_planilla < ?
+      `;
 
     const params = hasChofer ? [range.start, range.end, choferId] : [range.start, range.end];
     const result = await em.getConnection().execute<any>(sql, params);

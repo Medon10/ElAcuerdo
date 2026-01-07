@@ -597,21 +597,28 @@ function SupervisorDashboard() {
 
     setTotalDiaLoading(true);
     api
-      .get<{ data: Array<{ fecha_hora_planilla?: string; total_recorrido?: unknown }> }>(`/planillas`)
+      .get<{ data?: { total?: unknown } }>(`/planillas/total-dia?fecha=${encodeURIComponent(fecha)}`)
       .then((res) => {
         if (!mounted) return;
-        const items = Array.isArray(res?.data) ? res.data : [];
-        const sum = items.reduce((acc, p) => {
-          const iso = toLocalISODateString(p?.fecha_hora_planilla);
-          if (iso !== fecha) return acc;
-          return acc + toNumber(p?.total_recorrido);
-        }, 0);
-        setTotalDiaValue(sum);
+        setTotalDiaValue(toNumber(res?.data?.total));
       })
-      .catch((e: any) => {
-        if (!mounted) return;
-        setTotalDiaValue(0);
-        setTotalDiaError(e?.message || 'Error al calcular total del día');
+      .catch(async (e: any) => {
+        // Fallback (por compatibilidad): si el endpoint no existe/falla, usar suma local de planillas.
+        try {
+          const res = await api.get<{ data: Array<{ fecha_hora_planilla?: string; total_recorrido?: unknown }> }>(`/planillas`);
+          if (!mounted) return;
+          const items = Array.isArray(res?.data) ? res.data : [];
+          const sum = items.reduce((acc, p) => {
+            const iso = toLocalISODateString(p?.fecha_hora_planilla);
+            if (iso !== fecha) return acc;
+            return acc + toNumber(p?.total_recorrido);
+          }, 0);
+          setTotalDiaValue(sum);
+        } catch (fallbackErr: any) {
+          if (!mounted) return;
+          setTotalDiaValue(0);
+          setTotalDiaError(fallbackErr?.message || e?.message || 'Error al calcular total del día');
+        }
       })
       .finally(() => {
         if (!mounted) return;
