@@ -63,6 +63,27 @@ function toLocalISODateString(value: unknown): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function formatDateTimeAR(value: unknown): string {
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    hour12: false,
+  });
+}
+
+function formatTimeAR(value: unknown): string {
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
 function extractArray<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v as T[];
   const items = (v as any)?.items;
@@ -759,7 +780,7 @@ function SupervisorDashboard() {
                 }}
               >
                 {planillas.map((p) => {
-                  const when = p?.fecha_hora_planilla ? new Date(p.fecha_hora_planilla).toLocaleTimeString('es-AR') : '';
+                  const when = p?.fecha_hora_planilla ? formatTimeAR(p.fecha_hora_planilla) : '';
                   const label = `${when ? ` • ${when}` : ''} • ${formatMoneyARS(toNumber(p.total_recorrido))}`;
                   return (
                     <option key={p.id} value={String(p.id)}>
@@ -780,7 +801,7 @@ function SupervisorDashboard() {
                 {planilla.chofer ? `Chofer: ${formatChoferLabel(planilla.chofer)}` : ''}
                 {planilla.status ? ` • Estado: ${formatPlanillaStatus(planilla.status)}` : ''}
                 {planilla.fecha_hora_planilla
-                  ? ` • ${new Date(planilla.fecha_hora_planilla).toLocaleString('es-AR')}`
+                  ? ` • ${formatDateTimeAR(planilla.fecha_hora_planilla)}`
                   : ''}
               </div>
 
