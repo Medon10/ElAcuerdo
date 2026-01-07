@@ -7,13 +7,66 @@ import { PlanillaStatus } from './planilla.entity.js';
 import { Usuario } from '../usuario/usuario.entity.js';
 import { sendPlanillaSubmittedEmail } from '../notifications/planillaEmail.js';
 
+const BUSINESS_TIME_ZONE = process.env.BUSINESS_TIME_ZONE || 'America/Argentina/Buenos_Aires';
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = dtf.formatToParts(date);
+  const values: Record<string, number> = {};
+  for (const p of parts) {
+    if (p.type === 'literal') continue;
+    values[p.type] = Number(p.value);
+  }
+  const asUTC = Date.UTC(values.year, (values.month || 1) - 1, values.day || 1, values.hour || 0, values.minute || 0, values.second || 0);
+  return asUTC - date.getTime();
+}
+
+function zonedTimeToUtc(
+  parts: { year: number; month: number; day: number; hour?: number; minute?: number; second?: number },
+  timeZone: string
+) {
+  const utcTs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour || 0, parts.minute || 0, parts.second || 0);
+  const guess = new Date(utcTs);
+  const offset1 = getTimeZoneOffsetMs(guess, timeZone);
+  const guess2 = new Date(utcTs - offset1);
+  const offset2 = getTimeZoneOffsetMs(guess2, timeZone);
+  return new Date(utcTs - offset2);
+}
+
+function formatDateISOInTimeZone(d: Date, timeZone: string) {
+  const dtf = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  return dtf.format(d); // YYYY-MM-DD
+}
+
 function parseLocalDayRange(fechaISO: string): { start: Date; end: Date } | null {
-  // Espera 'YYYY-MM-DD'
+  // Espera 'YYYY-MM-DD' (día del negocio, no el del server)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaISO)) return null;
-  const start = new Date(`${fechaISO}T00:00:00`);
-  if (Number.isNaN(start.getTime())) return null;
-  const end = new Date(start);
-  end.setDate(start.getDate() + 1);
+  const [yyyyS, mmS, ddS] = fechaISO.split('-');
+  const year = Number(yyyyS);
+  const month = Number(mmS);
+  const day = Number(ddS);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+
+  const start = zonedTimeToUtc({ year, month, day, hour: 0, minute: 0, second: 0 }, BUSINESS_TIME_ZONE);
+
+  // next day parts (in UTC midday to avoid DST edge cases)
+  const tmp = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  tmp.setUTCDate(tmp.getUTCDate() + 1);
+  const nextY = tmp.getUTCFullYear();
+  const nextM = tmp.getUTCMonth() + 1;
+  const nextD = tmp.getUTCDate();
+  const end = zonedTimeToUtc({ year: nextY, month: nextM, day: nextD, hour: 0, minute: 0, second: 0 }, BUSINESS_TIME_ZONE);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
   return { start, end };
 }
 
@@ -31,18 +84,22 @@ async function totalDia(req: Request, res: Response) {
       return res.status(400).json({ message: 'Parámetro choferId inválido' });
     }
 
-    // Usar DATE(...) para evitar problemas de zona horaria/rangos.
     // `fecha` llega como 'YYYY-MM-DD' desde el input type=date.
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
       return res.status(400).json({ message: 'Formato de fecha inválido. Use YYYY-MM-DD' });
     }
 
+    const range = parseLocalDayRange(fecha);
+    if (!range) {
+      return res.status(400).json({ message: 'Formato de fecha inválido. Use YYYY-MM-DD' });
+    }
+
     const hasChofer = Number.isFinite(choferId as number);
     const sql = hasChofer
-      ? 'select coalesce(sum(total_recorrido), 0) as total from planilla where date(fecha_hora_planilla) = ? and chofer_id = ?'
-      : 'select coalesce(sum(total_recorrido), 0) as total from planilla where date(fecha_hora_planilla) = ?';
+      ? 'select coalesce(sum(total_recorrido), 0) as total from planilla where fecha_hora_planilla >= ? and fecha_hora_planilla < ? and chofer_id = ?'
+      : 'select coalesce(sum(total_recorrido), 0) as total from planilla where fecha_hora_planilla >= ? and fecha_hora_planilla < ?';
 
-    const params = hasChofer ? [fecha, choferId] : [fecha];
+    const params = hasChofer ? [range.start, range.end, choferId] : [range.start, range.end];
     const result = await em.getConnection().execute<any>(sql, params);
     const rows = Array.isArray(result) && Array.isArray(result[0]) ? result[0] : result;
     const total = rows?.[0]?.total ?? 0;
@@ -53,10 +110,7 @@ async function totalDia(req: Request, res: Response) {
 }
 
 function formatLocalDateISO(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+  return formatDateISOInTimeZone(d, BUSINESS_TIME_ZONE);
 }
 
 function toNumber(v: unknown) {
@@ -124,7 +178,23 @@ async function submitByChofer(req: Request, res: Response) {
       // Para "hoy", guardamos el timestamp real (así se pueden ordenar por hora).
       // Para fechas manuales, usamos un horario fijo para evitar problemas de zona horaria.
       const todayISO = formatLocalDateISO(new Date());
-      const fecha_hora_planilla = fechaISO === todayISO ? new Date() : new Date(`${fechaISO}T12:00:00`);
+      let fecha_hora_planilla: Date;
+      if (fechaISO === todayISO) {
+        fecha_hora_planilla = new Date();
+      } else {
+        const [yyyyS, mmS, ddS] = fechaISO.split('-');
+        fecha_hora_planilla = zonedTimeToUtc(
+          {
+            year: Number(yyyyS),
+            month: Number(mmS),
+            day: Number(ddS),
+            hour: 12,
+            minute: 0,
+            second: 0,
+          },
+          BUSINESS_TIME_ZONE
+        );
+      }
       const planilla = tem.create(Planilla as any, {
         chofer: user.id,
         numero_coche,
