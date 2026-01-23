@@ -2,16 +2,21 @@ name: Keep Render Awake
 
 on:
   schedule:
-    # Argentina = UTC-3. 07:00–23:59 AR = 10:00–02:59 UTC.
-    # Split into two schedules because cron hours can't wrap midnight.
-    - cron: "*/15 10-23 * * *"
-    - cron: "*/15 0-2 * * *"
+    # Disparar cada 15 minutos todo el día (UTC)
+    # Filtramos por horario AR dentro del job para mayor confiabilidad.
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping health endpoint
+      - name: Ping only between 07:00–23:59 Argentina
         run: |
+          AR_HOUR=$(TZ='America/Argentina/Buenos_Aires' date +%H)
+          printf "Argentina hour: %s\n" "$AR_HOUR"
+          if [ "$AR_HOUR" -lt 7 ]; then
+            echo "Outside 07:00–23:59 AR window. Skipping ping.";
+            exit 0
+          fi
           curl -fsS https://elacuerdo.onrender.com/api/health > /dev/null
