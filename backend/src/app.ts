@@ -91,6 +91,10 @@ const __dirname = path.dirname(__filename);
 const publicPath = path.join(__dirname, '..', 'public');
 app.use('/uploads', express.static(path.join(publicPath, 'uploads')));
 
+// mantener el backend despierto
+app.get('/api/health', (req, res) => {
+  res.status(200).send('Estoy corriendo');
+});
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Recurso no encontrado' });
@@ -101,10 +105,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(err.status || 500).json({ message: err.message || 'Error interno del servidor' });
 });
 
-// mantener el backend despierto
-app.get('/api/health', (req, res) => {
-  res.status(200).send('Eestoy corriendo');
-});
 
 syncSchema().then(() => {
   app.listen(PORT, () => {
