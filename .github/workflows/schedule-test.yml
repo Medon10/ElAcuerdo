@@ -1,0 +1,12 @@
+name: Schedule Test
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+
+jobs:
+  echo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print date
+        run: date -u
