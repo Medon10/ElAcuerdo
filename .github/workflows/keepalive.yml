@@ -2,21 +2,29 @@ name: Keep Render Awake
 
 on:
   schedule:
-    # Disparar cada 15 minutos todo el día (UTC)
-    # Filtramos por horario AR dentro del job para mayor confiabilidad.
-    - cron: "*/15 * * * *"
-  workflow_dispatch:
+    # IMPORTANTE: GitHub Actions suele tener retrasos de 5-10 minutos.
+    # Configuramos cada 10 minutos (*/10) para asegurar que, 
+    # incluso con retraso, llegue antes de los 15m de sueño de Render.
+    - cron: "*/10 * * * *"
+  workflow_dispatch: # Permite probarlo manualmente con botón "Run workflow"
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping only between 07:00–23:59 Argentina
+      - name: Ping only between 07:00–00:59 Argentina
         run: |
+          # 1. Obtener hora actual en Buenos Aires
           AR_HOUR=$(TZ='America/Argentina/Buenos_Aires' date +%H)
-          printf "Argentina hour: %s\n" "$AR_HOUR"
-          if [ "$AR_HOUR" -lt 7 ]; then
-            echo "Outside 07:00–23:59 AR window. Skipping ping.";
-            exit 0
+          echo "Hora Argentina detectada: $AR_HOUR"
+
+          # 2. Lógica de horario corregida
+          # Si la hora es mayor/igual a 7 (07..23) O es igual a 0 (00:00-00:59) -> DESPERTAR
+          if [ "$AR_HOUR" -ge 7 ] || [ "$AR_HOUR" -eq 0 ]; then
+            echo " Horario operativo. Enviando ping a Render..."
+            # El flag -m 10 pone un timeout de 10s para no colgar el action
+            curl -fsS -m 10 https://elacuerdo.onrender.com/api/health > /dev/null
+            echo "Ping enviado exitosamente."
+          else
+            echo " Fuera de horario (01:00 - 06:59). Dejando dormir al servidor."
           fi
-          curl -fsS https://elacuerdo.onrender.com/api/health > /dev/null
