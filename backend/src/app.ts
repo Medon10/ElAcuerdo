@@ -101,6 +101,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(err.status || 500).json({ message: err.message || 'Error interno del servidor' });
 });
 
+// mantener el backend despierto
+app.get('/api/health', (req, res) => {
+  res.status(200).send('Eestoy corriendo');
+});
 
 syncSchema().then(() => {
   app.listen(PORT, () => {
