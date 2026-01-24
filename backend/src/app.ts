@@ -93,7 +93,16 @@ app.use('/uploads', express.static(path.join(publicPath, 'uploads')));
 
 // mantener el backend despierto
 app.get('/api/health', (req, res) => {
-  res.status(200).send('Estoy corriendo');
+  // 1. Cabeceras para prohibir que Cloudflare/Navegadores guarden la respuesta
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
+  // 2. Log en consola para ver en el Dashboard de Render cuándo llega el ping
+  console.log(` Ping de UptimeRobot recibido a las: ${new Date().toLocaleTimeString()}`);
+
+  // 3. Respuesta dinámica (al cambiar la hora, obliga a no cachear)
+  res.status(200).send(`Estoy vivo. Hora servidor: ${new Date().toISOString()}`);
 });
 
 app.use((req, res) => {
