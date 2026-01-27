@@ -399,7 +399,7 @@ function DailyReportForm() {
                 <label className="DashboardPage__miniLabel">Hora</label>
                 <input
                   type="text"
-                  placeholder="06:30"
+                  placeholder=""
                   value={route.time}
                   onChange={(e) => handleRouteChange(route.id, 'time', e.target.value)}
                   className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
@@ -409,7 +409,7 @@ function DailyReportForm() {
                 <label className="DashboardPage__miniLabel">Recorrido</label>
                 <input
                   type="text"
-                  placeholder="0301"
+                  placeholder=""
                   value={route.routeId}
                   onChange={(e) => handleRouteChange(route.id, 'routeId', e.target.value)}
                   className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
@@ -419,7 +419,7 @@ function DailyReportForm() {
                 <label className="DashboardPage__miniLabel">Importe ($)</label>
                 <input
                   type="number"
-                  placeholder="0"
+                  placeholder=""
                   value={route.amount}
                   onChange={(e) => handleRouteChange(route.id, 'amount', e.target.value)}
                   className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--right DashboardPage__input--mono"
