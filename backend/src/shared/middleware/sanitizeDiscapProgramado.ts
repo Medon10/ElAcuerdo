@@ -22,7 +22,6 @@ export function sanitizeDiscapProgramadoInput(req: Request, res: Response, next:
 
   const fecha = typeof b.fecha === 'string' ? b.fecha.trim() : undefined;
   const input = {
-    chofer_id: b.chofer_id != null ? Number(b.chofer_id) : undefined,
     fecha: fecha,
     horario: normalizeHorario(b.horario),
     numero_recorrido: typeof b.numero_recorrido === 'string' ? b.numero_recorrido.trim() : undefined,

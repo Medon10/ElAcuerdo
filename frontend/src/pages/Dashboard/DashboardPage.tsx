@@ -210,6 +210,16 @@ function DailyReportForm() {
     return `${full}${d.discap_dni ? ` (${d.discap_dni})` : ''}`.trim();
   };
 
+  const discapListForDay = useMemo(() => {
+    const items = Array.isArray(discapProgramados) ? [...discapProgramados] : [];
+    items.sort((a, b) => {
+      const ha = normalizeHorario(String(a.horario || ''));
+      const hb = normalizeHorario(String(b.horario || ''));
+      return ha.localeCompare(hb);
+    });
+    return items;
+  }, [discapProgramados]);
+
   const findDiscapForRow = (row: { time: string; routeId: string }) => {
     const keyH = normalizeHorario(row.time);
     const keyR = (row.routeId || '').trim();
@@ -224,7 +234,7 @@ function DailyReportForm() {
   useEffect(() => {
     let mounted = true;
     api
-      .get<{ data: DiscapProgramadoDTO[] }>(`/discap-programados/mis?fecha=${encodeURIComponent(todayISO)}`)
+      .get<{ data: DiscapProgramadoDTO[] }>(`/discap-programados/por-fecha?fecha=${encodeURIComponent(todayISO)}`)
       .then((res) => {
         if (!mounted) return;
         setDiscapProgramados(Array.isArray(res?.data) ? res.data : []);
@@ -436,6 +446,27 @@ function DailyReportForm() {
         <h2 className="DashboardPage__sectionTitle">
           <FileText className="DashboardPage__sectionIcon DashboardPage__sectionIcon--blue" /> Planilla de Viajes
         </h2>
+
+        {discapListForDay.length > 0 && (
+          <div className="DashboardPage__inlineError" role="note" style={{ marginBottom: 14, alignItems: 'flex-start' }}>
+            <AlertTriangle className="DashboardPage__inlineErrorIcon" />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Discapacitados programados hoy</div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {discapListForDay.map((d) => {
+                  const when = normalizeHorario(String(d.horario || '')) || '-';
+                  const rec = String(d.numero_recorrido || '').trim() || '-';
+                  const label = formatDiscap(d);
+                  return (
+                    <div key={d.id} className="DashboardPage__mono" style={{ fontSize: 12 }}>
+                      {when} • {rec} • {label}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="DashboardPage__field">
           <label className="DashboardPage__fieldLabel">N° Coche</label>
@@ -690,13 +721,11 @@ function SupervisorDashboard() {
     setDiscapProgEditingId(null);
     setDiscapProgDraft({ horario: '', numero_recorrido: '', nombre: '', apellido: '', dni: '' });
 
-    if (!choferId || !fecha) return;
+    if (!fecha) return;
 
     setDiscapProgLoading(true);
     api
-      .get<{ data: DiscapProgramadoDTO[] }>(
-        `/discap-programados/por-chofer-fecha?choferId=${encodeURIComponent(choferId)}&fecha=${encodeURIComponent(fecha)}`
-      )
+      .get<{ data: DiscapProgramadoDTO[] }>(`/discap-programados/por-fecha?fecha=${encodeURIComponent(fecha)}`)
       .then((res) => {
         if (!mounted) return;
         setDiscapProgramados(Array.isArray(res?.data) ? res.data : []);
@@ -713,7 +742,7 @@ function SupervisorDashboard() {
     return () => {
       mounted = false;
     };
-  }, [choferId, fecha]);
+  }, [fecha]);
 
   const planilla = useMemo(() => {
     if (!selectedPlanillaId) return planillas[0] || null;
@@ -836,12 +865,11 @@ function SupervisorDashboard() {
   };
 
   const saveDiscapProgramado = async () => {
-    if (!choferId || !fecha) return;
+    if (!fecha) return;
     setDiscapProgSaving(true);
     setDiscapProgError(null);
     try {
       const payload = {
-        chofer_id: Number(choferId),
         fecha,
         horario: discapProgDraft.horario,
         numero_recorrido: discapProgDraft.numero_recorrido,
@@ -856,9 +884,7 @@ function SupervisorDashboard() {
         await api.post(`/discap-programados`, payload);
       }
 
-      const res = await api.get<{ data: DiscapProgramadoDTO[] }>(
-        `/discap-programados/por-chofer-fecha?choferId=${encodeURIComponent(choferId)}&fecha=${encodeURIComponent(fecha)}`
-      );
+      const res = await api.get<{ data: DiscapProgramadoDTO[] }>(`/discap-programados/por-fecha?fecha=${encodeURIComponent(fecha)}`);
       setDiscapProgramados(Array.isArray(res?.data) ? res.data : []);
       cancelEditDiscapProgramado();
     } catch (e: any) {
@@ -1014,7 +1040,7 @@ function SupervisorDashboard() {
 
           {loading && <div className="DashboardPage__muted" style={{ marginTop: 12 }}>Buscando...</div>}
 
-          {choferId && fecha && (
+          {fecha && (
             <div style={{ marginTop: 18 }}>
               <h3 className="DashboardPage__h3" style={{ margin: 0 }}>Discapacitados programados</h3>
               <div className="DashboardPage__muted" style={{ marginTop: 6 }}>

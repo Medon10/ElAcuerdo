@@ -202,7 +202,7 @@ async function submitByChofer(req: Request, res: Response) {
     // Se aplican automáticamente al guardar cada recorrido (si coincide horario + numero_recorrido).
     const discapProgramados = await em.find(
       DiscapProgramado as any,
-      { chofer: user.id, fecha: fechaISO } as any,
+      { fecha: fechaISO } as any,
       { fields: ['horario', 'numero_recorrido', 'discap_nombre', 'discap_apellido', 'discap_dni'] as any } as any
     );
     const discapMap = new Map<string, { discap_nombre?: string; discap_apellido?: string; discap_dni?: string }>();

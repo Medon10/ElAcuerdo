@@ -87,33 +87,8 @@ function assertFutureBusinessDateTimeOrThrow(fechaISO: string, horarioHHmm: stri
   return { normalizedHorario: normalized, scheduledUtc };
 }
 
-async function findByChoferFecha(req: Request, res: Response) {
+async function findByFecha(req: Request, res: Response) {
   try {
-    const choferId = Number(req.query.choferId);
-    const fecha = String(req.query.fecha || '').trim();
-
-    if (!Number.isFinite(choferId) || choferId <= 0) return res.status(400).json({ message: 'Parámetro choferId inválido' });
-    if (!fecha) return res.status(400).json({ message: 'Falta parámetro: fecha (YYYY-MM-DD)' });
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return res.status(400).json({ message: 'Formato de fecha inválido. Use YYYY-MM-DD' });
-
-    const em = orm.em.fork();
-    const data = await em.find(
-      DiscapProgramado as any,
-      { chofer: choferId, fecha } as any,
-      { orderBy: { horario: 'asc', numero_recorrido: 'asc' } as any } as any
-    );
-
-    return res.json({ data });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Error al obtener discapacitados programados', error: error?.message || String(error) });
-  }
-}
-
-async function findMine(req: Request, res: Response) {
-  try {
-    const user = (req as any).user as { id: number; rol: string } | undefined;
-    if (!user?.id) return res.status(401).json({ message: 'No autenticado' });
-
     const fecha = String(req.query.fecha || '').trim();
     if (!fecha) return res.status(400).json({ message: 'Falta parámetro: fecha (YYYY-MM-DD)' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return res.status(400).json({ message: 'Formato de fecha inválido. Use YYYY-MM-DD' });
@@ -121,7 +96,7 @@ async function findMine(req: Request, res: Response) {
     const em = orm.em.fork();
     const data = await em.find(
       DiscapProgramado as any,
-      { chofer: user.id, fecha } as any,
+      { fecha } as any,
       { orderBy: { horario: 'asc', numero_recorrido: 'asc' } as any } as any
     );
 
@@ -136,12 +111,10 @@ async function upsert(req: Request, res: Response) {
     const em = orm.em.fork();
     const input = (req.body as any).sanitizedInput || req.body;
 
-    const choferId = Number(input.chofer_id);
     const fecha = String(input.fecha || '').trim();
     const horario = String(input.horario || '').trim();
     const numero_recorrido = typeof input.numero_recorrido === 'string' ? input.numero_recorrido.trim() : '';
 
-    if (!Number.isFinite(choferId) || choferId <= 0) return res.status(400).json({ message: 'Falta chofer_id válido' });
     if (!fecha) return res.status(400).json({ message: 'Falta fecha (YYYY-MM-DD)' });
     if (!horario) return res.status(400).json({ message: 'Falta horario (HH:mm)' });
     if (!numero_recorrido) return res.status(400).json({ message: 'Falta numero_recorrido' });
@@ -149,7 +122,6 @@ async function upsert(req: Request, res: Response) {
     const { normalizedHorario } = assertFutureBusinessDateTimeOrThrow(fecha, horario);
 
     const payload = {
-      chofer: choferId,
       fecha,
       horario: normalizedHorario,
       numero_recorrido,
@@ -159,7 +131,6 @@ async function upsert(req: Request, res: Response) {
     } as any;
 
     const existing = await em.findOne(DiscapProgramado as any, {
-      chofer: choferId,
       fecha,
       horario: normalizedHorario,
       numero_recorrido,
@@ -191,12 +162,10 @@ async function update(req: Request, res: Response) {
 
     const input = (req.body as any).sanitizedInput || req.body;
 
-    const choferId = input.chofer_id != null ? Number(input.chofer_id) : (item as any).chofer?.id;
     const fecha = typeof input.fecha === 'string' ? input.fecha.trim() : (item as any).fecha;
     const horario = typeof input.horario === 'string' ? input.horario.trim() : (item as any).horario;
     const numero_recorrido = typeof input.numero_recorrido === 'string' ? input.numero_recorrido.trim() : (item as any).numero_recorrido;
 
-    if (!Number.isFinite(choferId) || choferId <= 0) return res.status(400).json({ message: 'chofer_id inválido' });
     if (!fecha) return res.status(400).json({ message: 'fecha inválida' });
     if (!horario) return res.status(400).json({ message: 'horario inválido' });
     if (!numero_recorrido) return res.status(400).json({ message: 'numero_recorrido inválido' });
@@ -204,7 +173,6 @@ async function update(req: Request, res: Response) {
     const { normalizedHorario } = assertFutureBusinessDateTimeOrThrow(fecha, horario);
 
     const payload = {
-      chofer: choferId,
       fecha,
       horario: normalizedHorario,
       numero_recorrido,
@@ -235,4 +203,4 @@ async function remove(req: Request, res: Response) {
   }
 }
 
-export { findByChoferFecha, findMine, upsert, update, remove };
+export { findByFecha, upsert, update, remove };
