@@ -16,4 +16,13 @@ export class Recorrido extends BaseEntity {
 
   @Property({ type: 'decimal', precision: 10, scale: 2 })
   importe!: number;
+
+  @Property({ nullable: true })
+  discap_nombre?: string;
+
+  @Property({ nullable: true })
+  discap_apellido?: string;
+
+  @Property({ nullable: true })
+  discap_dni?: string;
 }

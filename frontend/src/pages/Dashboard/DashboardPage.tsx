@@ -21,6 +21,9 @@ type RecorridoDTO = {
   horario?: string | null;
   numero_recorrido?: string | null;
   importe: number;
+  discap_nombre?: string | null;
+  discap_apellido?: string | null;
+  discap_dni?: string | null;
 };
 
 type PlanillaEfectivoDTO = {
@@ -544,6 +547,10 @@ function SupervisorDashboard() {
   const [selectedPlanillaId, setSelectedPlanillaId] = useState<string>('');
   const [totalDiaValue, setTotalDiaValue] = useState<number>(0);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [editingDiscapId, setEditingDiscapId] = useState<number | null>(null);
+  const [discapDraft, setDiscapDraft] = useState({ nombre: '', apellido: '', dni: '' });
+  const [discapSavingId, setDiscapSavingId] = useState<number | null>(null);
+  const [discapError, setDiscapError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -605,6 +612,12 @@ function SupervisorDashboard() {
     const found = planillas.find((p) => String(p?.id) === String(selectedPlanillaId));
     return found || planillas[0] || null;
   }, [planillas, selectedPlanillaId]);
+
+  useEffect(() => {
+    setEditingDiscapId(null);
+    setDiscapDraft({ nombre: '', apellido: '', dni: '' });
+    setDiscapError(null);
+  }, [planilla?.id]);
 
   useEffect(() => {
     let mounted = true;
@@ -684,6 +697,65 @@ function SupervisorDashboard() {
     }
     return totalDia;
   }, [planilla, totalDia, totalDiaLoading, totalDiaValue]);
+
+  const formatDiscapLabel = (r: RecorridoDTO) => {
+    const full = [r.discap_nombre, r.discap_apellido].filter(Boolean).join(' ').trim();
+    if (!full && !r.discap_dni) return '-';
+    return `${full}${r.discap_dni ? ` (${r.discap_dni})` : ''}`.trim();
+  };
+
+  const updateRecorridoInPlanillas = (recorridoId: number, updates: Partial<RecorridoDTO>) => {
+    setPlanillas((prev) =>
+      prev.map((p) => {
+        const items = extractArray<RecorridoDTO>(p.recorridos);
+        if (items.length === 0) return p;
+        const nextItems = items.map((r) => (r.id === recorridoId ? { ...r, ...updates } : r));
+        if (Array.isArray(p.recorridos)) return { ...p, recorridos: nextItems };
+        if (p.recorridos && typeof p.recorridos === 'object') {
+          return { ...p, recorridos: { ...(p.recorridos as any), items: nextItems } };
+        }
+        return p;
+      })
+    );
+  };
+
+  const startEditDiscap = (r: RecorridoDTO) => {
+    setDiscapError(null);
+    setEditingDiscapId(r.id);
+    setDiscapDraft({
+      nombre: r.discap_nombre || '',
+      apellido: r.discap_apellido || '',
+      dni: r.discap_dni || '',
+    });
+  };
+
+  const cancelEditDiscap = () => {
+    setEditingDiscapId(null);
+    setDiscapDraft({ nombre: '', apellido: '', dni: '' });
+    setDiscapError(null);
+  };
+
+  const saveDiscap = async (r: RecorridoDTO) => {
+    setDiscapSavingId(r.id);
+    setDiscapError(null);
+    try {
+      const nombre = discapDraft.nombre.trim();
+      const apellido = discapDraft.apellido.trim();
+      const dni = discapDraft.dni.trim();
+      const payload = {
+        discap_nombre: nombre || null,
+        discap_apellido: apellido || null,
+        discap_dni: dni || null,
+      } as any;
+      await api.patch(`/recorridos/${r.id}`, payload);
+      updateRecorridoInPlanillas(r.id, payload);
+      setEditingDiscapId(null);
+    } catch (e: any) {
+      setDiscapError(e?.message || 'Error al guardar discapacitado');
+    } finally {
+      setDiscapSavingId(null);
+    }
+  };
 
   const handleDeletePlanilla = async () => {
     if (!planilla?.id) return;
@@ -878,21 +950,128 @@ function SupervisorDashboard() {
                   <div className="DashboardPage__fieldLabel">Recorridos</div>
                   <div className="DashboardPage__routes" style={{ maxHeight: 260 }}>
                     {planillaRecorridos.map((r) => (
-                      <div key={r.id} className="DashboardPage__routeRow">
-                        <div className="DashboardPage__routeCol DashboardPage__routeCol--time">
-                          <div className="DashboardPage__miniLabel">Hora</div>
-                          <div className="DashboardPage__mono">{r.horario || '-'}</div>
-                        </div>
-                        <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
-                          <div className="DashboardPage__miniLabel">Recorrido</div>
-                          <div className="DashboardPage__mono">{r.numero_recorrido || '-'}</div>
-                        </div>
-                        <div className="DashboardPage__routeCol DashboardPage__routeCol--amount">
-                          <div className="DashboardPage__miniLabel">Importe</div>
-                          <div className="DashboardPage__mono" style={{ textAlign: 'left' }}>
-                            {formatMoneyARS(r.importe || 0)}
+                      <div key={r.id}>
+                        <div className="DashboardPage__routeRow">
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--time">
+                            <div className="DashboardPage__miniLabel">Hora</div>
+                            <div className="DashboardPage__mono">{r.horario || '-'}</div>
+                          </div>
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                            <div className="DashboardPage__miniLabel">Recorrido</div>
+                            <div className="DashboardPage__mono">{r.numero_recorrido || '-'}</div>
+                          </div>
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--amount">
+                            <div className="DashboardPage__miniLabel">Importe</div>
+                            <div className="DashboardPage__mono" style={{ textAlign: 'left' }}>
+                              {formatMoneyARS(r.importe || 0)}
+                            </div>
+                          </div>
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                            <div className="DashboardPage__miniLabel">Discapacitado</div>
+                            <div className="DashboardPage__mono">{formatDiscapLabel(r)}</div>
+                            <button
+                              type="button"
+                              onClick={() => startEditDiscap(r)}
+                              disabled={discapSavingId === r.id}
+                              style={{
+                                marginTop: 6,
+                                padding: '4px 8px',
+                                borderRadius: 8,
+                                border: '1px solid rgb(var(--brand-border))',
+                                background: '#f8fafc',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {r.discap_nombre || r.discap_apellido || r.discap_dni ? 'Editar' : 'Asignar'}
+                            </button>
                           </div>
                         </div>
+
+                        {editingDiscapId === r.id && (
+                          <div
+                            className="DashboardPage__routeRow"
+                            style={{
+                              marginTop: 8,
+                              padding: '8px 10px',
+                              background: '#f8fafc',
+                              border: '1px solid rgb(var(--brand-border))',
+                              borderRadius: 10,
+                            }}
+                          >
+                            <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                              <div className="DashboardPage__miniLabel">Nombre</div>
+                              <input
+                                type="text"
+                                value={discapDraft.nombre}
+                                onChange={(e) => setDiscapDraft((prev) => ({ ...prev, nombre: e.target.value }))}
+                                className="DashboardPage__input DashboardPage__input--sm"
+                              />
+                            </div>
+                            <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                              <div className="DashboardPage__miniLabel">Apellido</div>
+                              <input
+                                type="text"
+                                value={discapDraft.apellido}
+                                onChange={(e) => setDiscapDraft((prev) => ({ ...prev, apellido: e.target.value }))}
+                                className="DashboardPage__input DashboardPage__input--sm"
+                              />
+                            </div>
+                            <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                              <div className="DashboardPage__miniLabel">DNI</div>
+                              <input
+                                type="text"
+                                value={discapDraft.dni}
+                                onChange={(e) => setDiscapDraft((prev) => ({ ...prev, dni: e.target.value }))}
+                                className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--mono"
+                              />
+                            </div>
+                            <div className="DashboardPage__routeCol DashboardPage__routeCol--amount" style={{ alignItems: 'flex-end' }}>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => saveDiscap(r)}
+                                  disabled={discapSavingId === r.id}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: 8,
+                                    border: '1px solid rgb(var(--brand-border))',
+                                    background: 'rgb(var(--brand-red))',
+                                    color: '#fff',
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  {discapSavingId === r.id ? 'Guardando...' : 'Guardar'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEditDiscap}
+                                  disabled={discapSavingId === r.id}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: 8,
+                                    border: '1px solid rgb(var(--brand-border))',
+                                    background: '#fff',
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                              {discapError && (
+                                <div className="DashboardPage__inlineError" role="alert" style={{ marginTop: 6 }}>
+                                  <AlertTriangle className="DashboardPage__inlineErrorIcon" />
+                                  <span>{discapError}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
