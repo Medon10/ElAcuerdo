@@ -11,6 +11,7 @@ import { RequestContext } from '@mikro-orm/core';
 import { planillaRouter } from './planilla/planilla.routes.js';
 import { recorridoRouter } from './recorrido/recorrido.routes.js';
 import { planillaEfectivoRouter } from './planilla-efectivo/planilla-efectivo.routes.js';
+import { discapProgramadoRouter } from './discap-programado/discap-programado.routes.js';
 import authRouter from './shared/middleware/auth.routes.js';
 import { usuarioRouter } from './usuario/usuario.routes.js';
 
@@ -85,6 +86,7 @@ app.use('/usuarios', usuarioRouter);
 app.use('/planillas', planillaRouter);
 app.use('/recorridos', recorridoRouter);
 app.use('/planilla-efectivo', planillaEfectivoRouter);
+app.use('/discap-programados', discapProgramadoRouter);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

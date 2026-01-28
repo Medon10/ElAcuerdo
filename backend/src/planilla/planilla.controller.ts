@@ -6,6 +6,7 @@ import { PlanillaEfectivo } from '../planilla-efectivo/planilla-efectivo.entity.
 import { PlanillaStatus } from './planilla.entity.js';
 import { Usuario } from '../usuario/usuario.entity.js';
 import { sendPlanillaSubmittedEmail } from '../notifications/planillaEmail.js';
+import { DiscapProgramado } from '../discap-programado/discap-programado.entity.js';
 
 const BUSINESS_TIME_ZONE = process.env.BUSINESS_TIME_ZONE || 'America/Argentina/Buenos_Aires';
 
@@ -136,6 +137,18 @@ type RecorridoInput = {
   importe: number;
 };
 
+function normalizeHorarioHHmm(raw?: string) {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  if (!s) return '';
+  const m = /^([0-9]{1,2}):([0-9]{2})$/.exec(s);
+  if (!m) return s;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return s;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return s;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
 type EfectivoInput = {
   denominacion: number;
   cantidad: number;
@@ -185,6 +198,24 @@ async function submitByChofer(req: Request, res: Response) {
 
     const em = orm.em.fork();
 
+    // Pre-asignaciones de discapacitados para este chofer + día.
+    // Se aplican automáticamente al guardar cada recorrido (si coincide horario + numero_recorrido).
+    const discapProgramados = await em.find(
+      DiscapProgramado as any,
+      { chofer: user.id, fecha: fechaISO } as any,
+      { fields: ['horario', 'numero_recorrido', 'discap_nombre', 'discap_apellido', 'discap_dni'] as any } as any
+    );
+    const discapMap = new Map<string, { discap_nombre?: string; discap_apellido?: string; discap_dni?: string }>();
+    for (const d of discapProgramados as any[]) {
+      const key = `${normalizeHorarioHHmm(d?.horario)}|${String(d?.numero_recorrido || '').trim()}`;
+      if (!key || key === '|') continue;
+      discapMap.set(key, {
+        discap_nombre: typeof d?.discap_nombre === 'string' ? d.discap_nombre : undefined,
+        discap_apellido: typeof d?.discap_apellido === 'string' ? d.discap_apellido : undefined,
+        discap_dni: typeof d?.discap_dni === 'string' ? d.discap_dni : undefined,
+      });
+    }
+
     const created = await em.transactional(async (tem) => {
       // Permitir múltiples planillas por día.
       // Para "hoy", guardamos el timestamp real (así se pueden ordenar por hora).
@@ -219,11 +250,16 @@ async function submitByChofer(req: Request, res: Response) {
       });
 
       for (const r of recorridos) {
+        const key = `${normalizeHorarioHHmm(r.horario)}|${String(r.numero_recorrido || '').trim()}`;
+        const discap = discapMap.get(key);
         tem.create(Recorrido as any, {
           planilla,
           horario: r.horario || null,
           numero_recorrido: r.numero_recorrido || null,
           importe: toNumber(r.importe),
+          discap_nombre: discap?.discap_nombre || null,
+          discap_apellido: discap?.discap_apellido || null,
+          discap_dni: discap?.discap_dni || null,
         });
       }
 

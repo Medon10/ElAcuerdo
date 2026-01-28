@@ -8,6 +8,7 @@ import { Usuario } from '../../usuario/usuario.entity.js';
 import { Planilla } from '../../planilla/planilla.entity.js';
 import { Recorrido } from '../../recorrido/recorrido.entity.js';
 import { PlanillaEfectivo } from '../../planilla-efectivo/planilla-efectivo.entity.js';
+import { DiscapProgramado } from '../../discap-programado/discap-programado.entity.js';
 
 function buildClientUrlFromEnv() {
     if (process.env.DB_URL && process.env.DB_URL.trim()) return process.env.DB_URL;
@@ -27,8 +28,8 @@ const dbSslEnabled = String(process.env.DB_SSL || '').toLowerCase() === 'true';
 const dbSslRejectUnauthorized = String(process.env.DB_SSL_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false';
 
 export const orm = await MikroORM.init({
-    entities: [Usuario, Planilla, Recorrido, PlanillaEfectivo],
-    entitiesTs: [Usuario, Planilla, Recorrido, PlanillaEfectivo],
+    entities: [Usuario, Planilla, Recorrido, PlanillaEfectivo, DiscapProgramado],
+    entitiesTs: [Usuario, Planilla, Recorrido, PlanillaEfectivo, DiscapProgramado],
     driver: MySqlDriver,
     clientUrl: buildClientUrlFromEnv(),
         driverOptions: dbSslEnabled

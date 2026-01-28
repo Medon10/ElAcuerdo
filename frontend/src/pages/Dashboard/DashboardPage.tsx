@@ -26,6 +26,16 @@ type RecorridoDTO = {
   discap_dni?: string | null;
 };
 
+type DiscapProgramadoDTO = {
+  id: number;
+  fecha: string;
+  horario?: string | null;
+  numero_recorrido?: string | null;
+  discap_nombre?: string | null;
+  discap_apellido?: string | null;
+  discap_dni?: string | null;
+};
+
 type PlanillaEfectivoDTO = {
   id: number;
   denominacion: number;
@@ -156,12 +166,13 @@ function DailyReportForm() {
   const api = useApi();
   const { payload } = useAuth();
 
+  const todayISO = useMemo(() => toLocalISODateString(new Date()), []);
+
   const draftKey = useMemo(() => {
     const userId = payload?.id;
     if (!userId) return null;
-    const todayISO = toLocalISODateString(new Date());
     return `elAcuerdo.planillaDraft.v1.${userId}.${todayISO}`;
-  }, [payload?.id]);
+  }, [payload?.id, todayISO]);
 
   type DraftV1 = {
     v: 1;
@@ -180,6 +191,52 @@ function DailyReportForm() {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [discapProgramados, setDiscapProgramados] = useState<DiscapProgramadoDTO[]>([]);
+
+  const normalizeHorario = (raw: string) => {
+    const s = (raw || '').trim();
+    const m = /^([0-9]{1,2}):([0-9]{2})$/.exec(s);
+    if (!m) return s;
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return s;
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return s;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  };
+
+  const formatDiscap = (d: DiscapProgramadoDTO) => {
+    const full = [d.discap_nombre, d.discap_apellido].filter(Boolean).join(' ').trim();
+    if (!full && !d.discap_dni) return '';
+    return `${full}${d.discap_dni ? ` (${d.discap_dni})` : ''}`.trim();
+  };
+
+  const findDiscapForRow = (row: { time: string; routeId: string }) => {
+    const keyH = normalizeHorario(row.time);
+    const keyR = (row.routeId || '').trim();
+    if (!keyH || !keyR) return null;
+    const found = discapProgramados.find(
+      (d) => normalizeHorario(String(d.horario || '')) === keyH && String(d.numero_recorrido || '').trim() === keyR
+    );
+    return found || null;
+  };
+
+  // Traer pre-asignaciones del día (para mostrar al chofer qué recorridos tienen discapacitado asignado).
+  useEffect(() => {
+    let mounted = true;
+    api
+      .get<{ data: DiscapProgramadoDTO[] }>(`/discap-programados/mis?fecha=${encodeURIComponent(todayISO)}`)
+      .then((res) => {
+        if (!mounted) return;
+        setDiscapProgramados(Array.isArray(res?.data) ? res.data : []);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setDiscapProgramados([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [todayISO]);
 
   // Restore draft (if any) when opening the page.
   useEffect(() => {
@@ -427,6 +484,17 @@ function DailyReportForm() {
                   onChange={(e) => handleRouteChange(route.id, 'amount', e.target.value)}
                   className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--right DashboardPage__input--mono"
                 />
+
+                {(() => {
+                  const d = findDiscapForRow(route);
+                  const label = d ? formatDiscap(d) : '';
+                  if (!label) return null;
+                  return (
+                    <div className="DashboardPage__muted" style={{ marginTop: 6, fontSize: 12 }}>
+                      Discapacitado asignado: <span className="DashboardPage__mono">{label}</span>
+                    </div>
+                  );
+                })()}
               </div>
               <button onClick={() => removeRouteRow(route.id)} className="DashboardPage__removeRow" title="Eliminar fila">
                 <Trash2 className="DashboardPage__removeRowIcon" />
@@ -552,6 +620,14 @@ function SupervisorDashboard() {
   const [discapSavingId, setDiscapSavingId] = useState<number | null>(null);
   const [discapError, setDiscapError] = useState<string | null>(null);
 
+  const [discapProgramados, setDiscapProgramados] = useState<DiscapProgramadoDTO[]>([]);
+  const [discapProgLoading, setDiscapProgLoading] = useState(false);
+  const [discapProgError, setDiscapProgError] = useState<string | null>(null);
+  const [discapProgSaving, setDiscapProgSaving] = useState(false);
+  const [discapProgDeletingId, setDiscapProgDeletingId] = useState<number | null>(null);
+  const [discapProgEditingId, setDiscapProgEditingId] = useState<number | null>(null);
+  const [discapProgDraft, setDiscapProgDraft] = useState({ horario: '', numero_recorrido: '', nombre: '', apellido: '', dni: '' });
+
   useEffect(() => {
     let mounted = true;
     setError(null);
@@ -600,6 +676,38 @@ function SupervisorDashboard() {
       .finally(() => {
         if (!mounted) return;
         setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [choferId, fecha]);
+
+  useEffect(() => {
+    let mounted = true;
+    setDiscapProgError(null);
+    setDiscapProgramados([]);
+    setDiscapProgEditingId(null);
+    setDiscapProgDraft({ horario: '', numero_recorrido: '', nombre: '', apellido: '', dni: '' });
+
+    if (!choferId || !fecha) return;
+
+    setDiscapProgLoading(true);
+    api
+      .get<{ data: DiscapProgramadoDTO[] }>(
+        `/discap-programados/por-chofer-fecha?choferId=${encodeURIComponent(choferId)}&fecha=${encodeURIComponent(fecha)}`
+      )
+      .then((res) => {
+        if (!mounted) return;
+        setDiscapProgramados(Array.isArray(res?.data) ? res.data : []);
+      })
+      .catch((e: any) => {
+        if (!mounted) return;
+        setDiscapProgError(e?.message || 'Error al cargar discapacitados programados');
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setDiscapProgLoading(false);
       });
 
     return () => {
@@ -702,6 +810,76 @@ function SupervisorDashboard() {
     const full = [r.discap_nombre, r.discap_apellido].filter(Boolean).join(' ').trim();
     if (!full && !r.discap_dni) return '-';
     return `${full}${r.discap_dni ? ` (${r.discap_dni})` : ''}`.trim();
+  };
+
+  const formatDiscapProgramadoLabel = (d: DiscapProgramadoDTO) => {
+    const full = [d.discap_nombre, d.discap_apellido].filter(Boolean).join(' ').trim();
+    if (!full && !d.discap_dni) return '-';
+    return `${full}${d.discap_dni ? ` (${d.discap_dni})` : ''}`.trim();
+  };
+
+  const startEditDiscapProgramado = (d: DiscapProgramadoDTO) => {
+    setDiscapProgError(null);
+    setDiscapProgEditingId(d.id);
+    setDiscapProgDraft({
+      horario: String(d.horario || ''),
+      numero_recorrido: String(d.numero_recorrido || ''),
+      nombre: String(d.discap_nombre || ''),
+      apellido: String(d.discap_apellido || ''),
+      dni: String(d.discap_dni || ''),
+    });
+  };
+
+  const cancelEditDiscapProgramado = () => {
+    setDiscapProgEditingId(null);
+    setDiscapProgDraft({ horario: '', numero_recorrido: '', nombre: '', apellido: '', dni: '' });
+  };
+
+  const saveDiscapProgramado = async () => {
+    if (!choferId || !fecha) return;
+    setDiscapProgSaving(true);
+    setDiscapProgError(null);
+    try {
+      const payload = {
+        chofer_id: Number(choferId),
+        fecha,
+        horario: discapProgDraft.horario,
+        numero_recorrido: discapProgDraft.numero_recorrido,
+        discap_nombre: discapProgDraft.nombre.trim() || null,
+        discap_apellido: discapProgDraft.apellido.trim() || null,
+        discap_dni: discapProgDraft.dni.trim() || null,
+      } as any;
+
+      if (discapProgEditingId) {
+        await api.patch(`/discap-programados/${discapProgEditingId}`, payload);
+      } else {
+        await api.post(`/discap-programados`, payload);
+      }
+
+      const res = await api.get<{ data: DiscapProgramadoDTO[] }>(
+        `/discap-programados/por-chofer-fecha?choferId=${encodeURIComponent(choferId)}&fecha=${encodeURIComponent(fecha)}`
+      );
+      setDiscapProgramados(Array.isArray(res?.data) ? res.data : []);
+      cancelEditDiscapProgramado();
+    } catch (e: any) {
+      setDiscapProgError(e?.message || 'Error al guardar');
+    } finally {
+      setDiscapProgSaving(false);
+    }
+  };
+
+  const deleteDiscapProgramado = async (id: number) => {
+    setDiscapProgDeletingId(id);
+    setDiscapProgError(null);
+    try {
+      await api.del(`/discap-programados/${id}`);
+      setDiscapProgramados((prev) => prev.filter((x) => x.id !== id));
+      if (discapProgEditingId === id) cancelEditDiscapProgramado();
+    } catch (e: any) {
+      setDiscapProgError(e?.message || 'Error al borrar');
+    } finally {
+      setDiscapProgDeletingId(null);
+    }
   };
 
   const updateRecorridoInPlanillas = (recorridoId: number, updates: Partial<RecorridoDTO>) => {
@@ -835,6 +1013,143 @@ function SupervisorDashboard() {
           )}
 
           {loading && <div className="DashboardPage__muted" style={{ marginTop: 12 }}>Buscando...</div>}
+
+          {choferId && fecha && (
+            <div style={{ marginTop: 18 }}>
+              <h3 className="DashboardPage__h3" style={{ margin: 0 }}>Discapacitados programados</h3>
+              <div className="DashboardPage__muted" style={{ marginTop: 6 }}>
+                Cargar antes de que suceda el recorrido (se valida por fecha + hora).
+              </div>
+
+              {discapProgError && (
+                <div className="DashboardPage__inlineError" role="alert" style={{ marginTop: 10 }}>
+                  <AlertTriangle className="DashboardPage__inlineErrorIcon" />
+                  <span>{discapProgError}</span>
+                </div>
+              )}
+
+              {discapProgLoading ? (
+                <div className="DashboardPage__muted" style={{ marginTop: 10 }}>Cargando…</div>
+              ) : (
+                <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                  {discapProgramados.length === 0 ? (
+                    <div className="DashboardPage__muted">No hay asignaciones para esta fecha.</div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {discapProgramados.map((d) => (
+                        <div key={d.id} className="DashboardPage__routeRow" style={{ background: '#fff' }}>
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--time">
+                            <div className="DashboardPage__miniLabel">Hora</div>
+                            <div className="DashboardPage__mono">{String(d.horario || '-') || '-'}</div>
+                          </div>
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                            <div className="DashboardPage__miniLabel">Recorrido</div>
+                            <div className="DashboardPage__mono">{String(d.numero_recorrido || '-') || '-'}</div>
+                          </div>
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--amount">
+                            <div className="DashboardPage__miniLabel">Pasajero</div>
+                            <div className="DashboardPage__mono">{formatDiscapProgramadoLabel(d)}</div>
+                          </div>
+                          <button
+                            className="DashboardPage__tab"
+                            type="button"
+                            onClick={() => startEditDiscapProgramado(d)}
+                            style={{ padding: '8px 10px', alignSelf: 'center' }}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className="DashboardPage__removeRow"
+                            type="button"
+                            onClick={() => deleteDiscapProgramado(d.id)}
+                            disabled={discapProgDeletingId === d.id}
+                            title="Borrar"
+                          >
+                            <Trash2 className="DashboardPage__removeRowIcon" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 1fr', gap: 10, alignItems: 'end' }}>
+                  <div>
+                    <label className="DashboardPage__fieldLabel">Hora</label>
+                    <input
+                      className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
+                      value={discapProgDraft.horario}
+                      onChange={(e) => setDiscapProgDraft((p) => ({ ...p, horario: e.target.value }))}
+                      placeholder="06:35"
+                    />
+                  </div>
+                  <div>
+                    <label className="DashboardPage__fieldLabel">Recorrido</label>
+                    <input
+                      className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
+                      value={discapProgDraft.numero_recorrido}
+                      onChange={(e) => setDiscapProgDraft((p) => ({ ...p, numero_recorrido: e.target.value }))}
+                      placeholder="0301"
+                    />
+                  </div>
+                  <div>
+                    <label className="DashboardPage__fieldLabel">DNI</label>
+                    <input
+                      className="DashboardPage__input DashboardPage__input--sm"
+                      value={discapProgDraft.dni}
+                      onChange={(e) => setDiscapProgDraft((p) => ({ ...p, dni: e.target.value }))}
+                      placeholder=""
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label className="DashboardPage__fieldLabel">Nombre</label>
+                    <input
+                      className="DashboardPage__input DashboardPage__input--sm"
+                      value={discapProgDraft.nombre}
+                      onChange={(e) => setDiscapProgDraft((p) => ({ ...p, nombre: e.target.value }))}
+                      placeholder=""
+                    />
+                  </div>
+                  <div>
+                    <label className="DashboardPage__fieldLabel">Apellido</label>
+                    <input
+                      className="DashboardPage__input DashboardPage__input--sm"
+                      value={discapProgDraft.apellido}
+                      onChange={(e) => setDiscapProgDraft((p) => ({ ...p, apellido: e.target.value }))}
+                      placeholder=""
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="DashboardPage__submit is-enabled"
+                    style={{ width: 'fit-content', padding: '10px 14px' }}
+                    onClick={saveDiscapProgramado}
+                    disabled={discapProgSaving}
+                  >
+                    {discapProgSaving ? 'Guardando…' : discapProgEditingId ? 'Guardar cambios' : 'Agregar'}
+                  </button>
+                  {discapProgEditingId && (
+                    <button
+                      type="button"
+                      className="DashboardPage__tab"
+                      onClick={cancelEditDiscapProgramado}
+                      disabled={discapProgSaving}
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {!loading && choferId && fecha && planillas.length === 0 && !error && (
             <div className="DashboardPage__muted" style={{ marginTop: 12 }}>No hay planilla para esa fecha.</div>
