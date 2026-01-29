@@ -192,6 +192,7 @@ function DailyReportForm() {
   const [warning, setWarning] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [discapProgramados, setDiscapProgramados] = useState<DiscapProgramadoDTO[]>([]);
+  const [discapNoticeOpen, setDiscapNoticeOpen] = useState(false);
 
   const normalizeHorario = (raw: string) => {
     const s = (raw || '').trim();
@@ -448,11 +449,17 @@ function DailyReportForm() {
         </h2>
 
         {discapListForDay.length > 0 && (
-          <div className="DashboardPage__inlineError" role="note" style={{ marginBottom: 14, alignItems: 'flex-start' }}>
-            <AlertTriangle className="DashboardPage__inlineErrorIcon" />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>Discapacitados programados hoy</div>
-              <div style={{ display: 'grid', gap: 4 }}>
+          <div className="DashboardPage__softNotice" role="note" style={{ marginBottom: 14 }}>
+            <button
+              type="button"
+              className="DashboardPage__softNoticeToggle"
+              onClick={() => setDiscapNoticeOpen((v) => !v)}
+            >
+              <span>Discapacitados programados del día</span>
+              <span className="DashboardPage__softNoticeChevron">{discapNoticeOpen ? '−' : '+'}</span>
+            </button>
+            {discapNoticeOpen && (
+              <div className="DashboardPage__softNoticeBody">
                 {discapListForDay.map((d) => {
                   const when = normalizeHorario(String(d.horario || '')) || '-';
                   const rec = String(d.numero_recorrido || '').trim() || '-';
@@ -464,7 +471,7 @@ function DailyReportForm() {
                   );
                 })}
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -479,7 +486,7 @@ function DailyReportForm() {
               setCoche(e.target.value);
             }}
             className="DashboardPage__input DashboardPage__input--mono DashboardPage__input--lg"
-            placeholder="00"
+            placeholder=""
           />
         </div>
 
@@ -1043,9 +1050,6 @@ function SupervisorDashboard() {
           {fecha && (
             <div style={{ marginTop: 18 }}>
               <h3 className="DashboardPage__h3" style={{ margin: 0 }}>Discapacitados programados</h3>
-              <div className="DashboardPage__muted" style={{ marginTop: 6 }}>
-                Cargar antes de que suceda el recorrido (se valida por fecha + hora).
-              </div>
 
               {discapProgError && (
                 <div className="DashboardPage__inlineError" role="alert" style={{ marginTop: 10 }}>
@@ -1108,7 +1112,6 @@ function SupervisorDashboard() {
                       className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
                       value={discapProgDraft.horario}
                       onChange={(e) => setDiscapProgDraft((p) => ({ ...p, horario: e.target.value }))}
-                      placeholder="06:35"
                     />
                   </div>
                   <div>
@@ -1117,7 +1120,6 @@ function SupervisorDashboard() {
                       className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
                       value={discapProgDraft.numero_recorrido}
                       onChange={(e) => setDiscapProgDraft((p) => ({ ...p, numero_recorrido: e.target.value }))}
-                      placeholder="0301"
                     />
                   </div>
                   <div>
