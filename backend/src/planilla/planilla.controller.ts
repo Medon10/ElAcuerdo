@@ -122,6 +122,53 @@ async function totalDia(req: Request, res: Response) {
   }
 }
 
+function parseLocalMonthRange(mesISO: string): { start: Date; end: Date } | null {
+  // Espera 'YYYY-MM'
+  if (!/^\d{4}-\d{2}$/.test(mesISO)) return null;
+  const [yyyyS, mmS] = mesISO.split('-');
+  const year = Number(yyyyS);
+  const month = Number(mmS);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return null;
+
+  const start = zonedTimeToUtc({ year, month, day: 1, hour: 0, minute: 0, second: 0 }, BUSINESS_TIME_ZONE);
+
+  // Primer día del mes siguiente
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const end = zonedTimeToUtc({ year: nextYear, month: nextMonth, day: 1, hour: 0, minute: 0, second: 0 }, BUSINESS_TIME_ZONE);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  return { start, end };
+}
+
+async function totalMes(req: Request, res: Response) {
+  try {
+    const em = orm.em.fork();
+    const mes = String(req.query.mes || '');
+    if (!mes) {
+      return res.status(400).json({ message: 'Falta parámetro: mes (YYYY-MM)' });
+    }
+
+    const range = parseLocalMonthRange(mes);
+    if (!range) {
+      return res.status(400).json({ message: 'Formato de mes inválido. Use YYYY-MM' });
+    }
+
+    const sql = `
+      select coalesce(sum(r.importe), 0) as total
+      from planilla p
+      join recorridos r on r.planilla_id = p.id
+      where p.fecha_hora_planilla >= ? and p.fecha_hora_planilla < ?
+    `;
+    const result = await em.getConnection().execute<any>(sql, [range.start, range.end]);
+    const rows = Array.isArray(result) && Array.isArray(result[0]) ? result[0] : result;
+    const total = rows?.[0]?.total ?? 0;
+    return res.json({ data: { total } });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error al calcular total del mes', error: error?.message || String(error) });
+  }
+}
+
 function formatLocalDateISO(d: Date) {
   return formatDateISOInTimeZone(d, BUSINESS_TIME_ZONE);
 }
@@ -431,8 +478,45 @@ async function remove(req: Request, res: Response) {
   }
 }
 
+async function resumenDia(req: Request, res: Response) {
+  try {
+    const em = orm.em.fork();
+    const fecha = String(req.query.fecha || '').trim();
+    if (!fecha) return res.status(400).json({ message: 'Falta parámetro: fecha (YYYY-MM-DD)' });
+
+    const range = parseLocalDayRange(fecha);
+    if (!range) return res.status(400).json({ message: 'Formato de fecha inválido. Use YYYY-MM-DD' });
+
+    const items = await em.find(
+      Planilla as any,
+      { fecha_hora_planilla: { $gte: range.start, $lt: range.end } } as any,
+      { populate: ['chofer'] as any, orderBy: { fecha_hora_planilla: 'ASC' } as any } as any
+    );
+
+    const data = (items as any[]).map((p) => ({
+      id: p.id,
+      chofer_id: p.chofer?.id ?? null,
+      chofer_nombre: [p.chofer?.nombre, p.chofer?.apellido].filter(Boolean).join(' ').trim() || p.chofer?.usuario || null,
+      numero_coche: p.numero_coche,
+      total_recorrido: p.total_recorrido,
+      total_efectivo: p.total_efectivo,
+      diferencia: p.diferencia,
+      status: p.status,
+      fecha_hora_planilla: p.fecha_hora_planilla,
+    }));
+
+    return res.json({ data });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error al obtener resumen del día', error: error?.message || String(error) });
+  }
+}
+
 export { findAll, findOne, add, update, remove, findByChoferFecha }
 
 export { submitByChofer };
 
 export { totalDia };
+
+export { totalMes };
+
+export { resumenDia };

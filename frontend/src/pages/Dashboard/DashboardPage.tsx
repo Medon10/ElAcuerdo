@@ -658,6 +658,9 @@ function SupervisorDashboard() {
   const [discapSavingId, setDiscapSavingId] = useState<number | null>(null);
   const [discapError, setDiscapError] = useState<string | null>(null);
 
+  const [totalMesValue, setTotalMesValue] = useState<number>(0);
+  const [totalMesLoading, setTotalMesLoading] = useState(false);
+
   const [discapProgramados, setDiscapProgramados] = useState<DiscapProgramadoDTO[]>([]);
   const [discapProgLoading, setDiscapProgLoading] = useState(false);
   const [discapProgError, setDiscapProgError] = useState<string | null>(null);
@@ -665,6 +668,27 @@ function SupervisorDashboard() {
   const [discapProgDeletingId, setDiscapProgDeletingId] = useState<number | null>(null);
   const [discapProgEditingId, setDiscapProgEditingId] = useState<number | null>(null);
   const [discapProgDraft, setDiscapProgDraft] = useState({ horario: '', numero_recorrido: '', nombre: '', apellido: '', dni: '' });
+  const [discapProgOpen, setDiscapProgOpen] = useState(false);
+
+  type ResumenDiaItem = {
+    id: number;
+    chofer_id: number | null;
+    chofer_nombre: string | null;
+    numero_coche: string;
+    total_recorrido: number;
+    total_efectivo: number;
+    diferencia: number;
+    status: string;
+    fecha_hora_planilla: string;
+  };
+  const [resumenDia, setResumenDia] = useState<ResumenDiaItem[]>([]);
+  const choferesConPlanilla = useMemo(() => {
+    const ids = new Set<number>();
+    for (const r of resumenDia) {
+      if (r.chofer_id) ids.add(r.chofer_id);
+    }
+    return ids;
+  }, [resumenDia]);
 
   useEffect(() => {
     let mounted = true;
@@ -749,6 +773,48 @@ function SupervisorDashboard() {
     return () => {
       mounted = false;
     };
+  }, [fecha]);
+
+  // Resumen del día: qué choferes enviaron planilla
+  useEffect(() => {
+    let mounted = true;
+    setResumenDia([]);
+    if (!fecha) return;
+    api
+      .get<{ data: ResumenDiaItem[] }>(`/planillas/resumen-dia?fecha=${encodeURIComponent(fecha)}`)
+      .then((res) => {
+        if (!mounted) return;
+        setResumenDia(Array.isArray(res?.data) ? res.data : []);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setResumenDia([]);
+      });
+    return () => { mounted = false; };
+  }, [fecha, planillas]);
+
+  // Total recaudado del mes
+  useEffect(() => {
+    let mounted = true;
+    setTotalMesValue(0);
+    if (!fecha) return;
+    const mes = fecha.slice(0, 7); // YYYY-MM
+    setTotalMesLoading(true);
+    api
+      .get<{ data: { total?: unknown } }>(`/planillas/total-mes?mes=${encodeURIComponent(mes)}`)
+      .then((res) => {
+        if (!mounted) return;
+        setTotalMesValue(toNumber(res?.data?.total));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setTotalMesValue(0);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setTotalMesLoading(false);
+      });
+    return () => { mounted = false; };
   }, [fecha]);
 
   const planilla = useMemo(() => {
@@ -1002,6 +1068,10 @@ function SupervisorDashboard() {
             <p className="DashboardPage__superTotalLabel">Total Recaudado (Día)</p>
             <p className="DashboardPage__superTotalValue">{totalDiaDisplay}</p>
           </div>
+          <div className="DashboardPage__superTotal">
+            <p className="DashboardPage__superTotalLabel">Total Recaudado (Mes)</p>
+            <p className="DashboardPage__superTotalValue">{totalMesLoading ? '...' : formatMoneyARS(totalMesValue)}</p>
+          </div>
         </div>
       </div>
 
@@ -1018,13 +1088,15 @@ function SupervisorDashboard() {
                 <option value="">Seleccionar chofer</option>
                 {choferes.map((c) => {
                   const label = [c.nombre, c.apellido].filter(Boolean).join(' ').trim() || c.usuario || `ID ${c.id}`;
+                  const sent = choferesConPlanilla.has(c.id);
                   return (
                     <option key={c.id} value={String(c.id)}>
-                      {label}
+                      {label}{sent ? ' 🟢' : ''}
                     </option>
                   );
                 })}
               </select>
+
             </div>
 
             <div>
@@ -1048,134 +1120,145 @@ function SupervisorDashboard() {
           {loading && <div className="DashboardPage__muted" style={{ marginTop: 12 }}>Buscando...</div>}
 
           {fecha && (
-            <div style={{ marginTop: 18 }}>
-              <h3 className="DashboardPage__h3" style={{ margin: 0 }}>Discapacitados programados</h3>
+            <div className="DashboardPage__softNotice" style={{ marginTop: 18 }}>
+              <button
+                type="button"
+                className="DashboardPage__softNoticeToggle"
+                onClick={() => setDiscapProgOpen((v) => !v)}
+              >
+                <span>Discapacitados programados{discapProgramados.length > 0 ? ` (${discapProgramados.length})` : ''}</span>
+                <span className="DashboardPage__softNoticeChevron">{discapProgOpen ? '−' : '+'}</span>
+              </button>
 
-              {discapProgError && (
-                <div className="DashboardPage__inlineError" role="alert" style={{ marginTop: 10 }}>
-                  <AlertTriangle className="DashboardPage__inlineErrorIcon" />
-                  <span>{discapProgError}</span>
-                </div>
-              )}
-
-              {discapProgLoading ? (
-                <div className="DashboardPage__muted" style={{ marginTop: 10 }}>Cargando…</div>
-              ) : (
-                <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
-                  {discapProgramados.length === 0 ? (
-                    <div className="DashboardPage__muted">No hay asignaciones para esta fecha.</div>
-                  ) : (
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      {discapProgramados.map((d) => (
-                        <div key={d.id} className="DashboardPage__routeRow" style={{ background: '#fff' }}>
-                          <div className="DashboardPage__routeCol DashboardPage__routeCol--time">
-                            <div className="DashboardPage__miniLabel">Hora</div>
-                            <div className="DashboardPage__mono">{String(d.horario || '-') || '-'}</div>
-                          </div>
-                          <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
-                            <div className="DashboardPage__miniLabel">Recorrido</div>
-                            <div className="DashboardPage__mono">{String(d.numero_recorrido || '-') || '-'}</div>
-                          </div>
-                          <div className="DashboardPage__routeCol DashboardPage__routeCol--amount">
-                            <div className="DashboardPage__miniLabel">Pasajero</div>
-                            <div className="DashboardPage__mono">{formatDiscapProgramadoLabel(d)}</div>
-                          </div>
-                          <button
-                            className="DashboardPage__tab"
-                            type="button"
-                            onClick={() => startEditDiscapProgramado(d)}
-                            style={{ padding: '8px 10px', alignSelf: 'center' }}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            className="DashboardPage__removeRow"
-                            type="button"
-                            onClick={() => deleteDiscapProgramado(d.id)}
-                            disabled={discapProgDeletingId === d.id}
-                            title="Borrar"
-                          >
-                            <Trash2 className="DashboardPage__removeRowIcon" />
-                          </button>
-                        </div>
-                      ))}
+              {discapProgOpen && (
+                <div className="DashboardPage__softNoticeBody" style={{ padding: 0 }}>
+                  {discapProgError && (
+                    <div className="DashboardPage__inlineError" role="alert" style={{ marginTop: 10 }}>
+                      <AlertTriangle className="DashboardPage__inlineErrorIcon" />
+                      <span>{discapProgError}</span>
                     </div>
                   )}
+
+                  {discapProgLoading ? (
+                    <div className="DashboardPage__muted" style={{ marginTop: 10 }}>Cargando…</div>
+                  ) : (
+                    <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                      {discapProgramados.length === 0 ? (
+                        <div className="DashboardPage__muted">No hay asignaciones para esta fecha.</div>
+                      ) : (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          {discapProgramados.map((d) => (
+                            <div key={d.id} className="DashboardPage__routeRow" style={{ background: '#fff' }}>
+                              <div className="DashboardPage__routeCol DashboardPage__routeCol--time">
+                                <div className="DashboardPage__miniLabel">Hora</div>
+                                <div className="DashboardPage__mono">{String(d.horario || '-') || '-'}</div>
+                              </div>
+                              <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                                <div className="DashboardPage__miniLabel">Recorrido</div>
+                                <div className="DashboardPage__mono">{String(d.numero_recorrido || '-') || '-'}</div>
+                              </div>
+                              <div className="DashboardPage__routeCol DashboardPage__routeCol--amount">
+                                <div className="DashboardPage__miniLabel">Pasajero</div>
+                                <div className="DashboardPage__mono">{formatDiscapProgramadoLabel(d)}</div>
+                              </div>
+                              <button
+                                className="DashboardPage__tab"
+                                type="button"
+                                onClick={() => startEditDiscapProgramado(d)}
+                                style={{ padding: '8px 10px', alignSelf: 'center' }}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                className="DashboardPage__removeRow"
+                                type="button"
+                                onClick={() => deleteDiscapProgramado(d.id)}
+                                disabled={discapProgDeletingId === d.id}
+                                title="Borrar"
+                              >
+                                <Trash2 className="DashboardPage__removeRowIcon" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 1fr', gap: 10, alignItems: 'end' }}>
+                      <div>
+                        <label className="DashboardPage__fieldLabel">Hora</label>
+                        <input
+                          className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
+                          value={discapProgDraft.horario}
+                          onChange={(e) => setDiscapProgDraft((p) => ({ ...p, horario: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="DashboardPage__fieldLabel">Recorrido</label>
+                        <input
+                          className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
+                          value={discapProgDraft.numero_recorrido}
+                          onChange={(e) => setDiscapProgDraft((p) => ({ ...p, numero_recorrido: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="DashboardPage__fieldLabel">DNI</label>
+                        <input
+                          className="DashboardPage__input DashboardPage__input--sm"
+                          value={discapProgDraft.dni}
+                          onChange={(e) => setDiscapProgDraft((p) => ({ ...p, dni: e.target.value }))}
+                          placeholder=""
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label className="DashboardPage__fieldLabel">Nombre</label>
+                        <input
+                          className="DashboardPage__input DashboardPage__input--sm"
+                          value={discapProgDraft.nombre}
+                          onChange={(e) => setDiscapProgDraft((p) => ({ ...p, nombre: e.target.value }))}
+                          placeholder=""
+                        />
+                      </div>
+                      <div>
+                        <label className="DashboardPage__fieldLabel">Apellido</label>
+                        <input
+                          className="DashboardPage__input DashboardPage__input--sm"
+                          value={discapProgDraft.apellido}
+                          onChange={(e) => setDiscapProgDraft((p) => ({ ...p, apellido: e.target.value }))}
+                          placeholder=""
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="DashboardPage__submit is-enabled"
+                        style={{ width: 'fit-content', padding: '10px 14px' }}
+                        onClick={saveDiscapProgramado}
+                        disabled={discapProgSaving}
+                      >
+                        {discapProgSaving ? 'Guardando…' : discapProgEditingId ? 'Guardar cambios' : 'Agregar'}
+                      </button>
+                      {discapProgEditingId && (
+                        <button
+                          type="button"
+                          className="DashboardPage__tab"
+                          onClick={cancelEditDiscapProgramado}
+                          disabled={discapProgSaving}
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
-
-              <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 1fr', gap: 10, alignItems: 'end' }}>
-                  <div>
-                    <label className="DashboardPage__fieldLabel">Hora</label>
-                    <input
-                      className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
-                      value={discapProgDraft.horario}
-                      onChange={(e) => setDiscapProgDraft((p) => ({ ...p, horario: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="DashboardPage__fieldLabel">Recorrido</label>
-                    <input
-                      className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
-                      value={discapProgDraft.numero_recorrido}
-                      onChange={(e) => setDiscapProgDraft((p) => ({ ...p, numero_recorrido: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="DashboardPage__fieldLabel">DNI</label>
-                    <input
-                      className="DashboardPage__input DashboardPage__input--sm"
-                      value={discapProgDraft.dni}
-                      onChange={(e) => setDiscapProgDraft((p) => ({ ...p, dni: e.target.value }))}
-                      placeholder=""
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <div>
-                    <label className="DashboardPage__fieldLabel">Nombre</label>
-                    <input
-                      className="DashboardPage__input DashboardPage__input--sm"
-                      value={discapProgDraft.nombre}
-                      onChange={(e) => setDiscapProgDraft((p) => ({ ...p, nombre: e.target.value }))}
-                      placeholder=""
-                    />
-                  </div>
-                  <div>
-                    <label className="DashboardPage__fieldLabel">Apellido</label>
-                    <input
-                      className="DashboardPage__input DashboardPage__input--sm"
-                      value={discapProgDraft.apellido}
-                      onChange={(e) => setDiscapProgDraft((p) => ({ ...p, apellido: e.target.value }))}
-                      placeholder=""
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <button
-                    type="button"
-                    className="DashboardPage__submit is-enabled"
-                    style={{ width: 'fit-content', padding: '10px 14px' }}
-                    onClick={saveDiscapProgramado}
-                    disabled={discapProgSaving}
-                  >
-                    {discapProgSaving ? 'Guardando…' : discapProgEditingId ? 'Guardar cambios' : 'Agregar'}
-                  </button>
-                  {discapProgEditingId && (
-                    <button
-                      type="button"
-                      className="DashboardPage__tab"
-                      onClick={cancelEditDiscapProgramado}
-                      disabled={discapProgSaving}
-                    >
-                      Cancelar
-                    </button>
-                  )}
-                </div>
-              </div>
             </div>
           )}
 
