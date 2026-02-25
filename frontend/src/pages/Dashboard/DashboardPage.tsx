@@ -21,6 +21,19 @@ type RecorridoDTO = {
   horario?: string | null;
   numero_recorrido?: string | null;
   importe: number;
+  discap_nombre?: string | null;
+  discap_apellido?: string | null;
+  discap_dni?: string | null;
+};
+
+type DiscapProgramadoDTO = {
+  id: number;
+  fecha: string;
+  horario?: string | null;
+  numero_recorrido?: string | null;
+  discap_nombre?: string | null;
+  discap_apellido?: string | null;
+  discap_dni?: string | null;
 };
 
 type PlanillaEfectivoDTO = {
@@ -153,12 +166,13 @@ function DailyReportForm() {
   const api = useApi();
   const { payload } = useAuth();
 
+  const todayISO = useMemo(() => toLocalISODateString(new Date()), []);
+
   const draftKey = useMemo(() => {
     const userId = payload?.id;
     if (!userId) return null;
-    const todayISO = toLocalISODateString(new Date());
     return `elAcuerdo.planillaDraft.v1.${userId}.${todayISO}`;
-  }, [payload?.id]);
+  }, [payload?.id, todayISO]);
 
   type DraftV1 = {
     v: 1;
@@ -177,6 +191,63 @@ function DailyReportForm() {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [discapProgramados, setDiscapProgramados] = useState<DiscapProgramadoDTO[]>([]);
+  const [discapNoticeOpen, setDiscapNoticeOpen] = useState(false);
+
+  const normalizeHorario = (raw: string) => {
+    const s = (raw || '').trim();
+    const m = /^([0-9]{1,2}):([0-9]{2})$/.exec(s);
+    if (!m) return s;
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return s;
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return s;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  };
+
+  const formatDiscap = (d: DiscapProgramadoDTO) => {
+    const full = [d.discap_nombre, d.discap_apellido].filter(Boolean).join(' ').trim();
+    if (!full && !d.discap_dni) return '';
+    return `${full}${d.discap_dni ? ` (${d.discap_dni})` : ''}`.trim();
+  };
+
+  const discapListForDay = useMemo(() => {
+    const items = Array.isArray(discapProgramados) ? [...discapProgramados] : [];
+    items.sort((a, b) => {
+      const ha = normalizeHorario(String(a.horario || ''));
+      const hb = normalizeHorario(String(b.horario || ''));
+      return ha.localeCompare(hb);
+    });
+    return items;
+  }, [discapProgramados]);
+
+  const findDiscapForRow = (row: { time: string; routeId: string }) => {
+    const keyH = normalizeHorario(row.time);
+    const keyR = (row.routeId || '').trim();
+    if (!keyH || !keyR) return null;
+    const found = discapProgramados.find(
+      (d) => normalizeHorario(String(d.horario || '')) === keyH && String(d.numero_recorrido || '').trim() === keyR
+    );
+    return found || null;
+  };
+
+  // Traer pre-asignaciones del día (para mostrar al chofer qué recorridos tienen discapacitado asignado).
+  useEffect(() => {
+    let mounted = true;
+    api
+      .get<{ data: DiscapProgramadoDTO[] }>(`/discap-programados/por-fecha?fecha=${encodeURIComponent(todayISO)}`)
+      .then((res) => {
+        if (!mounted) return;
+        setDiscapProgramados(Array.isArray(res?.data) ? res.data : []);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setDiscapProgramados([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [todayISO]);
 
   // Restore draft (if any) when opening the page.
   useEffect(() => {
@@ -377,6 +448,33 @@ function DailyReportForm() {
           <FileText className="DashboardPage__sectionIcon DashboardPage__sectionIcon--blue" /> Planilla de Viajes
         </h2>
 
+        {discapListForDay.length > 0 && (
+          <div className="DashboardPage__softNotice" role="note" style={{ marginBottom: 14 }}>
+            <button
+              type="button"
+              className="DashboardPage__softNoticeToggle"
+              onClick={() => setDiscapNoticeOpen((v) => !v)}
+            >
+              <span>Discapacitados programados del día</span>
+              <span className="DashboardPage__softNoticeChevron">{discapNoticeOpen ? '−' : '+'}</span>
+            </button>
+            {discapNoticeOpen && (
+              <div className="DashboardPage__softNoticeBody">
+                {discapListForDay.map((d) => {
+                  const when = normalizeHorario(String(d.horario || '')) || '-';
+                  const rec = String(d.numero_recorrido || '').trim() || '-';
+                  const label = formatDiscap(d);
+                  return (
+                    <div key={d.id} className="DashboardPage__mono" style={{ fontSize: 12 }}>
+                      {when} • {rec} • {label}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="DashboardPage__field">
           <label className="DashboardPage__fieldLabel">N° Coche</label>
           <input
@@ -388,7 +486,7 @@ function DailyReportForm() {
               setCoche(e.target.value);
             }}
             className="DashboardPage__input DashboardPage__input--mono DashboardPage__input--lg"
-            placeholder="00"
+            placeholder=""
           />
         </div>
 
@@ -424,6 +522,17 @@ function DailyReportForm() {
                   onChange={(e) => handleRouteChange(route.id, 'amount', e.target.value)}
                   className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--right DashboardPage__input--mono"
                 />
+
+                {(() => {
+                  const d = findDiscapForRow(route);
+                  const label = d ? formatDiscap(d) : '';
+                  if (!label) return null;
+                  return (
+                    <div className="DashboardPage__muted" style={{ marginTop: 6, fontSize: 12 }}>
+                      Discapacitado asignado: <span className="DashboardPage__mono">{label}</span>
+                    </div>
+                  );
+                })()}
               </div>
               <button onClick={() => removeRouteRow(route.id)} className="DashboardPage__removeRow" title="Eliminar fila">
                 <Trash2 className="DashboardPage__removeRowIcon" />
@@ -544,6 +653,42 @@ function SupervisorDashboard() {
   const [selectedPlanillaId, setSelectedPlanillaId] = useState<string>('');
   const [totalDiaValue, setTotalDiaValue] = useState<number>(0);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [editingDiscapId, setEditingDiscapId] = useState<number | null>(null);
+  const [discapDraft, setDiscapDraft] = useState({ nombre: '', apellido: '', dni: '' });
+  const [discapSavingId, setDiscapSavingId] = useState<number | null>(null);
+  const [discapError, setDiscapError] = useState<string | null>(null);
+
+  const [totalMesValue, setTotalMesValue] = useState<number>(0);
+  const [totalMesLoading, setTotalMesLoading] = useState(false);
+
+  const [discapProgramados, setDiscapProgramados] = useState<DiscapProgramadoDTO[]>([]);
+  const [discapProgLoading, setDiscapProgLoading] = useState(false);
+  const [discapProgError, setDiscapProgError] = useState<string | null>(null);
+  const [discapProgSaving, setDiscapProgSaving] = useState(false);
+  const [discapProgDeletingId, setDiscapProgDeletingId] = useState<number | null>(null);
+  const [discapProgEditingId, setDiscapProgEditingId] = useState<number | null>(null);
+  const [discapProgDraft, setDiscapProgDraft] = useState({ horario: '', numero_recorrido: '', nombre: '', apellido: '', dni: '' });
+  const [discapProgOpen, setDiscapProgOpen] = useState(false);
+
+  type ResumenDiaItem = {
+    id: number;
+    chofer_id: number | null;
+    chofer_nombre: string | null;
+    numero_coche: string;
+    total_recorrido: number;
+    total_efectivo: number;
+    diferencia: number;
+    status: string;
+    fecha_hora_planilla: string;
+  };
+  const [resumenDia, setResumenDia] = useState<ResumenDiaItem[]>([]);
+  const choferesConPlanilla = useMemo(() => {
+    const ids = new Set<number>();
+    for (const r of resumenDia) {
+      if (r.chofer_id) ids.add(r.chofer_id);
+    }
+    return ids;
+  }, [resumenDia]);
 
   useEffect(() => {
     let mounted = true;
@@ -600,11 +745,89 @@ function SupervisorDashboard() {
     };
   }, [choferId, fecha]);
 
+  useEffect(() => {
+    let mounted = true;
+    setDiscapProgError(null);
+    setDiscapProgramados([]);
+    setDiscapProgEditingId(null);
+    setDiscapProgDraft({ horario: '', numero_recorrido: '', nombre: '', apellido: '', dni: '' });
+
+    if (!fecha) return;
+
+    setDiscapProgLoading(true);
+    api
+      .get<{ data: DiscapProgramadoDTO[] }>(`/discap-programados/por-fecha?fecha=${encodeURIComponent(fecha)}`)
+      .then((res) => {
+        if (!mounted) return;
+        setDiscapProgramados(Array.isArray(res?.data) ? res.data : []);
+      })
+      .catch((e: any) => {
+        if (!mounted) return;
+        setDiscapProgError(e?.message || 'Error al cargar discapacitados programados');
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setDiscapProgLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [fecha]);
+
+  // Resumen del día: qué choferes enviaron planilla
+  useEffect(() => {
+    let mounted = true;
+    setResumenDia([]);
+    if (!fecha) return;
+    api
+      .get<{ data: ResumenDiaItem[] }>(`/planillas/resumen-dia?fecha=${encodeURIComponent(fecha)}`)
+      .then((res) => {
+        if (!mounted) return;
+        setResumenDia(Array.isArray(res?.data) ? res.data : []);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setResumenDia([]);
+      });
+    return () => { mounted = false; };
+  }, [fecha, planillas]);
+
+  // Total recaudado del mes
+  useEffect(() => {
+    let mounted = true;
+    setTotalMesValue(0);
+    if (!fecha) return;
+    const mes = fecha.slice(0, 7); // YYYY-MM
+    setTotalMesLoading(true);
+    api
+      .get<{ data: { total?: unknown } }>(`/planillas/total-mes?mes=${encodeURIComponent(mes)}`)
+      .then((res) => {
+        if (!mounted) return;
+        setTotalMesValue(toNumber(res?.data?.total));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setTotalMesValue(0);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setTotalMesLoading(false);
+      });
+    return () => { mounted = false; };
+  }, [fecha]);
+
   const planilla = useMemo(() => {
     if (!selectedPlanillaId) return planillas[0] || null;
     const found = planillas.find((p) => String(p?.id) === String(selectedPlanillaId));
     return found || planillas[0] || null;
   }, [planillas, selectedPlanillaId]);
+
+  useEffect(() => {
+    setEditingDiscapId(null);
+    setDiscapDraft({ nombre: '', apellido: '', dni: '' });
+    setDiscapError(null);
+  }, [planilla?.id]);
 
   useEffect(() => {
     let mounted = true;
@@ -685,6 +908,132 @@ function SupervisorDashboard() {
     return totalDia;
   }, [planilla, totalDia, totalDiaLoading, totalDiaValue]);
 
+  const formatDiscapLabel = (r: RecorridoDTO) => {
+    const full = [r.discap_nombre, r.discap_apellido].filter(Boolean).join(' ').trim();
+    if (!full && !r.discap_dni) return '-';
+    return `${full}${r.discap_dni ? ` (${r.discap_dni})` : ''}`.trim();
+  };
+
+  const formatDiscapProgramadoLabel = (d: DiscapProgramadoDTO) => {
+    const full = [d.discap_nombre, d.discap_apellido].filter(Boolean).join(' ').trim();
+    if (!full && !d.discap_dni) return '-';
+    return `${full}${d.discap_dni ? ` (${d.discap_dni})` : ''}`.trim();
+  };
+
+  const startEditDiscapProgramado = (d: DiscapProgramadoDTO) => {
+    setDiscapProgError(null);
+    setDiscapProgEditingId(d.id);
+    setDiscapProgDraft({
+      horario: String(d.horario || ''),
+      numero_recorrido: String(d.numero_recorrido || ''),
+      nombre: String(d.discap_nombre || ''),
+      apellido: String(d.discap_apellido || ''),
+      dni: String(d.discap_dni || ''),
+    });
+  };
+
+  const cancelEditDiscapProgramado = () => {
+    setDiscapProgEditingId(null);
+    setDiscapProgDraft({ horario: '', numero_recorrido: '', nombre: '', apellido: '', dni: '' });
+  };
+
+  const saveDiscapProgramado = async () => {
+    if (!fecha) return;
+    setDiscapProgSaving(true);
+    setDiscapProgError(null);
+    try {
+      const payload = {
+        fecha,
+        horario: discapProgDraft.horario,
+        numero_recorrido: discapProgDraft.numero_recorrido,
+        discap_nombre: discapProgDraft.nombre.trim() || null,
+        discap_apellido: discapProgDraft.apellido.trim() || null,
+        discap_dni: discapProgDraft.dni.trim() || null,
+      } as any;
+
+      if (discapProgEditingId) {
+        await api.patch(`/discap-programados/${discapProgEditingId}`, payload);
+      } else {
+        await api.post(`/discap-programados`, payload);
+      }
+
+      const res = await api.get<{ data: DiscapProgramadoDTO[] }>(`/discap-programados/por-fecha?fecha=${encodeURIComponent(fecha)}`);
+      setDiscapProgramados(Array.isArray(res?.data) ? res.data : []);
+      cancelEditDiscapProgramado();
+    } catch (e: any) {
+      setDiscapProgError(e?.message || 'Error al guardar');
+    } finally {
+      setDiscapProgSaving(false);
+    }
+  };
+
+  const deleteDiscapProgramado = async (id: number) => {
+    setDiscapProgDeletingId(id);
+    setDiscapProgError(null);
+    try {
+      await api.del(`/discap-programados/${id}`);
+      setDiscapProgramados((prev) => prev.filter((x) => x.id !== id));
+      if (discapProgEditingId === id) cancelEditDiscapProgramado();
+    } catch (e: any) {
+      setDiscapProgError(e?.message || 'Error al borrar');
+    } finally {
+      setDiscapProgDeletingId(null);
+    }
+  };
+
+  const updateRecorridoInPlanillas = (recorridoId: number, updates: Partial<RecorridoDTO>) => {
+    setPlanillas((prev) =>
+      prev.map((p) => {
+        const items = extractArray<RecorridoDTO>(p.recorridos);
+        if (items.length === 0) return p;
+        const nextItems = items.map((r) => (r.id === recorridoId ? { ...r, ...updates } : r));
+        if (Array.isArray(p.recorridos)) return { ...p, recorridos: nextItems };
+        if (p.recorridos && typeof p.recorridos === 'object') {
+          return { ...p, recorridos: { ...(p.recorridos as any), items: nextItems } };
+        }
+        return p;
+      })
+    );
+  };
+
+  const startEditDiscap = (r: RecorridoDTO) => {
+    setDiscapError(null);
+    setEditingDiscapId(r.id);
+    setDiscapDraft({
+      nombre: r.discap_nombre || '',
+      apellido: r.discap_apellido || '',
+      dni: r.discap_dni || '',
+    });
+  };
+
+  const cancelEditDiscap = () => {
+    setEditingDiscapId(null);
+    setDiscapDraft({ nombre: '', apellido: '', dni: '' });
+    setDiscapError(null);
+  };
+
+  const saveDiscap = async (r: RecorridoDTO) => {
+    setDiscapSavingId(r.id);
+    setDiscapError(null);
+    try {
+      const nombre = discapDraft.nombre.trim();
+      const apellido = discapDraft.apellido.trim();
+      const dni = discapDraft.dni.trim();
+      const payload = {
+        discap_nombre: nombre || null,
+        discap_apellido: apellido || null,
+        discap_dni: dni || null,
+      } as any;
+      await api.patch(`/recorridos/${r.id}`, payload);
+      updateRecorridoInPlanillas(r.id, payload);
+      setEditingDiscapId(null);
+    } catch (e: any) {
+      setDiscapError(e?.message || 'Error al guardar discapacitado');
+    } finally {
+      setDiscapSavingId(null);
+    }
+  };
+
   const handleDeletePlanilla = async () => {
     if (!planilla?.id) return;
     setDeleting(true);
@@ -719,6 +1068,10 @@ function SupervisorDashboard() {
             <p className="DashboardPage__superTotalLabel">Total Recaudado (Día)</p>
             <p className="DashboardPage__superTotalValue">{totalDiaDisplay}</p>
           </div>
+          <div className="DashboardPage__superTotal">
+            <p className="DashboardPage__superTotalLabel">Total Recaudado (Mes)</p>
+            <p className="DashboardPage__superTotalValue">{totalMesLoading ? '...' : formatMoneyARS(totalMesValue)}</p>
+          </div>
         </div>
       </div>
 
@@ -735,13 +1088,15 @@ function SupervisorDashboard() {
                 <option value="">Seleccionar chofer</option>
                 {choferes.map((c) => {
                   const label = [c.nombre, c.apellido].filter(Boolean).join(' ').trim() || c.usuario || `ID ${c.id}`;
+                  const sent = choferesConPlanilla.has(c.id);
                   return (
                     <option key={c.id} value={String(c.id)}>
-                      {label}
+                      {label}{sent ? ' 🟢' : ''}
                     </option>
                   );
                 })}
               </select>
+
             </div>
 
             <div>
@@ -763,6 +1118,149 @@ function SupervisorDashboard() {
           )}
 
           {loading && <div className="DashboardPage__muted" style={{ marginTop: 12 }}>Buscando...</div>}
+
+          {fecha && (
+            <div className="DashboardPage__softNotice" style={{ marginTop: 18 }}>
+              <button
+                type="button"
+                className="DashboardPage__softNoticeToggle"
+                onClick={() => setDiscapProgOpen((v) => !v)}
+              >
+                <span>Discapacitados programados{discapProgramados.length > 0 ? ` (${discapProgramados.length})` : ''}</span>
+                <span className="DashboardPage__softNoticeChevron">{discapProgOpen ? '−' : '+'}</span>
+              </button>
+
+              {discapProgOpen && (
+                <div className="DashboardPage__softNoticeBody" style={{ padding: 0 }}>
+                  {discapProgError && (
+                    <div className="DashboardPage__inlineError" role="alert" style={{ marginTop: 10 }}>
+                      <AlertTriangle className="DashboardPage__inlineErrorIcon" />
+                      <span>{discapProgError}</span>
+                    </div>
+                  )}
+
+                  {discapProgLoading ? (
+                    <div className="DashboardPage__muted" style={{ marginTop: 10 }}>Cargando…</div>
+                  ) : (
+                    <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                      {discapProgramados.length === 0 ? (
+                        <div className="DashboardPage__muted">No hay asignaciones para esta fecha.</div>
+                      ) : (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          {discapProgramados.map((d) => (
+                            <div key={d.id} className="DashboardPage__routeRow" style={{ background: '#fff' }}>
+                              <div className="DashboardPage__routeCol DashboardPage__routeCol--time">
+                                <div className="DashboardPage__miniLabel">Hora</div>
+                                <div className="DashboardPage__mono">{String(d.horario || '-') || '-'}</div>
+                              </div>
+                              <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                                <div className="DashboardPage__miniLabel">Recorrido</div>
+                                <div className="DashboardPage__mono">{String(d.numero_recorrido || '-') || '-'}</div>
+                              </div>
+                              <div className="DashboardPage__routeCol DashboardPage__routeCol--amount">
+                                <div className="DashboardPage__miniLabel">Pasajero</div>
+                                <div className="DashboardPage__mono">{formatDiscapProgramadoLabel(d)}</div>
+                              </div>
+                              <button
+                                className="DashboardPage__tab"
+                                type="button"
+                                onClick={() => startEditDiscapProgramado(d)}
+                                style={{ padding: '8px 10px', alignSelf: 'center' }}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                className="DashboardPage__removeRow"
+                                type="button"
+                                onClick={() => deleteDiscapProgramado(d.id)}
+                                disabled={discapProgDeletingId === d.id}
+                                title="Borrar"
+                              >
+                                <Trash2 className="DashboardPage__removeRowIcon" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 1fr', gap: 10, alignItems: 'end' }}>
+                      <div>
+                        <label className="DashboardPage__fieldLabel">Hora</label>
+                        <input
+                          className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
+                          value={discapProgDraft.horario}
+                          onChange={(e) => setDiscapProgDraft((p) => ({ ...p, horario: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="DashboardPage__fieldLabel">Recorrido</label>
+                        <input
+                          className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--center"
+                          value={discapProgDraft.numero_recorrido}
+                          onChange={(e) => setDiscapProgDraft((p) => ({ ...p, numero_recorrido: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="DashboardPage__fieldLabel">DNI</label>
+                        <input
+                          className="DashboardPage__input DashboardPage__input--sm"
+                          value={discapProgDraft.dni}
+                          onChange={(e) => setDiscapProgDraft((p) => ({ ...p, dni: e.target.value }))}
+                          placeholder=""
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label className="DashboardPage__fieldLabel">Nombre</label>
+                        <input
+                          className="DashboardPage__input DashboardPage__input--sm"
+                          value={discapProgDraft.nombre}
+                          onChange={(e) => setDiscapProgDraft((p) => ({ ...p, nombre: e.target.value }))}
+                          placeholder=""
+                        />
+                      </div>
+                      <div>
+                        <label className="DashboardPage__fieldLabel">Apellido</label>
+                        <input
+                          className="DashboardPage__input DashboardPage__input--sm"
+                          value={discapProgDraft.apellido}
+                          onChange={(e) => setDiscapProgDraft((p) => ({ ...p, apellido: e.target.value }))}
+                          placeholder=""
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="DashboardPage__submit is-enabled"
+                        style={{ width: 'fit-content', padding: '10px 14px' }}
+                        onClick={saveDiscapProgramado}
+                        disabled={discapProgSaving}
+                      >
+                        {discapProgSaving ? 'Guardando…' : discapProgEditingId ? 'Guardar cambios' : 'Agregar'}
+                      </button>
+                      {discapProgEditingId && (
+                        <button
+                          type="button"
+                          className="DashboardPage__tab"
+                          onClick={cancelEditDiscapProgramado}
+                          disabled={discapProgSaving}
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {!loading && choferId && fecha && planillas.length === 0 && !error && (
             <div className="DashboardPage__muted" style={{ marginTop: 12 }}>No hay planilla para esa fecha.</div>
@@ -878,21 +1376,128 @@ function SupervisorDashboard() {
                   <div className="DashboardPage__fieldLabel">Recorridos</div>
                   <div className="DashboardPage__routes" style={{ maxHeight: 260 }}>
                     {planillaRecorridos.map((r) => (
-                      <div key={r.id} className="DashboardPage__routeRow">
-                        <div className="DashboardPage__routeCol DashboardPage__routeCol--time">
-                          <div className="DashboardPage__miniLabel">Hora</div>
-                          <div className="DashboardPage__mono">{r.horario || '-'}</div>
-                        </div>
-                        <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
-                          <div className="DashboardPage__miniLabel">Recorrido</div>
-                          <div className="DashboardPage__mono">{r.numero_recorrido || '-'}</div>
-                        </div>
-                        <div className="DashboardPage__routeCol DashboardPage__routeCol--amount">
-                          <div className="DashboardPage__miniLabel">Importe</div>
-                          <div className="DashboardPage__mono" style={{ textAlign: 'left' }}>
-                            {formatMoneyARS(r.importe || 0)}
+                      <div key={r.id}>
+                        <div className="DashboardPage__routeRow">
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--time">
+                            <div className="DashboardPage__miniLabel">Hora</div>
+                            <div className="DashboardPage__mono">{r.horario || '-'}</div>
+                          </div>
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                            <div className="DashboardPage__miniLabel">Recorrido</div>
+                            <div className="DashboardPage__mono">{r.numero_recorrido || '-'}</div>
+                          </div>
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--amount">
+                            <div className="DashboardPage__miniLabel">Importe</div>
+                            <div className="DashboardPage__mono" style={{ textAlign: 'left' }}>
+                              {formatMoneyARS(r.importe || 0)}
+                            </div>
+                          </div>
+                          <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                            <div className="DashboardPage__miniLabel">Discapacitado</div>
+                            <div className="DashboardPage__mono">{formatDiscapLabel(r)}</div>
+                            <button
+                              type="button"
+                              onClick={() => startEditDiscap(r)}
+                              disabled={discapSavingId === r.id}
+                              style={{
+                                marginTop: 6,
+                                padding: '4px 8px',
+                                borderRadius: 8,
+                                border: '1px solid rgb(var(--brand-border))',
+                                background: '#f8fafc',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {r.discap_nombre || r.discap_apellido || r.discap_dni ? 'Editar' : 'Asignar'}
+                            </button>
                           </div>
                         </div>
+
+                        {editingDiscapId === r.id && (
+                          <div
+                            className="DashboardPage__routeRow"
+                            style={{
+                              marginTop: 8,
+                              padding: '8px 10px',
+                              background: '#f8fafc',
+                              border: '1px solid rgb(var(--brand-border))',
+                              borderRadius: 10,
+                            }}
+                          >
+                            <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                              <div className="DashboardPage__miniLabel">Nombre</div>
+                              <input
+                                type="text"
+                                value={discapDraft.nombre}
+                                onChange={(e) => setDiscapDraft((prev) => ({ ...prev, nombre: e.target.value }))}
+                                className="DashboardPage__input DashboardPage__input--sm"
+                              />
+                            </div>
+                            <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                              <div className="DashboardPage__miniLabel">Apellido</div>
+                              <input
+                                type="text"
+                                value={discapDraft.apellido}
+                                onChange={(e) => setDiscapDraft((prev) => ({ ...prev, apellido: e.target.value }))}
+                                className="DashboardPage__input DashboardPage__input--sm"
+                              />
+                            </div>
+                            <div className="DashboardPage__routeCol DashboardPage__routeCol--route">
+                              <div className="DashboardPage__miniLabel">DNI</div>
+                              <input
+                                type="text"
+                                value={discapDraft.dni}
+                                onChange={(e) => setDiscapDraft((prev) => ({ ...prev, dni: e.target.value }))}
+                                className="DashboardPage__input DashboardPage__input--sm DashboardPage__input--mono"
+                              />
+                            </div>
+                            <div className="DashboardPage__routeCol DashboardPage__routeCol--amount" style={{ alignItems: 'flex-end' }}>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => saveDiscap(r)}
+                                  disabled={discapSavingId === r.id}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: 8,
+                                    border: '1px solid rgb(var(--brand-border))',
+                                    background: 'rgb(var(--brand-red))',
+                                    color: '#fff',
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  {discapSavingId === r.id ? 'Guardando...' : 'Guardar'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEditDiscap}
+                                  disabled={discapSavingId === r.id}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: 8,
+                                    border: '1px solid rgb(var(--brand-border))',
+                                    background: '#fff',
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                              {discapError && (
+                                <div className="DashboardPage__inlineError" role="alert" style={{ marginTop: 6 }}>
+                                  <AlertTriangle className="DashboardPage__inlineErrorIcon" />
+                                  <span>{discapError}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

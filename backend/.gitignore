@@ -30,3 +30,6 @@ dist/**/*
 
 #contraseña bdd
 ormpassword.ts
+tsconfig.tsbuildinfo
+
+*.tsbuildinfo
